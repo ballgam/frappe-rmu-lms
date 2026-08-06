@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import inspect
+import json
 from functools import cache
 from urllib.parse import unquote
 
@@ -18,6 +19,7 @@ from lms.lms.doctype.lms_enrollment.lms_enrollment import (
 	batched_enrollment_updates,
 	update_enrollment,
 )
+from lms.lms.embed_hosts import get_allowed_embed_hosts, is_allowed_embed_host
 from lms.lms.permissions import INSTRUCTOR_FIELDS, can_access_lesson
 from lms.lms.utils import (
 	get_course_progress,
@@ -43,6 +45,8 @@ class CourseLesson(Document):
 	def validate(self):
 		self.content = sanitize_editorjs(self.content)
 		self.instructor_content = sanitize_editorjs(self.instructor_content)
+		self.content = strip_disallowed_iframes(self.content)
+		self.instructor_content = strip_disallowed_iframes(self.instructor_content)
 
 	def on_update(self):
 		self.validate_quiz_id()
@@ -89,6 +93,54 @@ class CourseLesson(Document):
 						"lesson": self.name,
 					},
 				)
+
+
+def strip_disallowed_iframes(content: str) -> str:
+	"""Drop `iframe` blocks whose src isn't on the embed allowlist.
+
+	The editor already refuses these while the author types, but that's UX only —
+	the frontend isn't in the path of a crafted frappe.client.set_value, so this
+	is the control that actually holds.
+
+	Follows the sanitize_editorjs/get_editorjs_blocks convention of failing soft:
+	content that isn't EditorJS JSON (a Desk-edited textarea, a legacy lesson) is
+	returned untouched rather than raising out of validate(). Content with no
+	offending block is returned byte-identical, so the common save path can't
+	perturb `time`/`version` or blocks the reader would otherwise have dropped.
+	"""
+	blocks = get_editorjs_blocks(content)
+	if not any(block.get("type") == "iframe" for block in blocks):
+		return content
+
+	allowed_hosts = get_allowed_embed_hosts()
+	if all(
+		is_allowed_embed_host((block.get("data") or {}).get("src", ""), allowed_hosts)
+		for block in blocks
+		if block.get("type") == "iframe"
+	):
+		return content
+
+	# Only now rewrite, filtering in place so every other top-level key survives.
+	try:
+		data = json.loads(content)
+	except (TypeError, ValueError):
+		return content
+
+	data["blocks"] = [
+		block
+		for block in data.get("blocks", [])
+		if not (
+			isinstance(block, dict)
+			and block.get("type") == "iframe"
+			and not is_allowed_embed_host(
+				(block.get("data") or {}).get("src", "")
+				if isinstance(block.get("data"), dict)
+				else "",
+				allowed_hosts,
+			)
+		)
+	]
+	return json.dumps(data, separators=(",", ":"))
 
 
 def cleanup_lesson_backreferences(lesson: str):

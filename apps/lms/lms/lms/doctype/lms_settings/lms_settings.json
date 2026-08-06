@@ -17,6 +17,8 @@
 		"column_break_bjis",
 		"unsplash_access_key",
 		"livecode_url",
+		"embeds_section",
+		"allowed_embed_hosts",
 		"notifications_section",
 		"send_notification_for_published_courses",
 		"column_break_dtns",
@@ -107,6 +109,17 @@
 			"fieldname": "livecode_url",
 			"fieldtype": "Data",
 			"label": "LiveCode URL"
+		},
+		{
+			"fieldname": "embeds_section",
+			"fieldtype": "Section Break",
+			"label": "Embeds"
+		},
+		{
+			"description": "Domains lesson authors may embed in an iframe, one per line. Subdomains are included automatically (figma.com also allows embed.figma.com). Leave blank to use the built-in list.",
+			"fieldname": "allowed_embed_hosts",
+			"fieldtype": "Small Text",
+			"label": "Allowed Embed Domains"
 		},
 		{
 			"fieldname": "mentor_request_creation",

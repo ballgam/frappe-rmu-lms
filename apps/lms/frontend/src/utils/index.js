@@ -7,6 +7,8 @@ import { Markdown } from '@/utils/markdownParser'
 import { useSettings } from '@/stores/settings'
 import { usersStore } from '@/stores/user'
 import { Heading } from '@/utils/heading'
+import { Iframe } from '@/utils/iframe'
+import { EMBED_SERVICES } from '@/utils/iframeEmbed'
 import Paragraph from '@editorjs/paragraph'
 import { CodeBox } from '@/utils/code'
 import NestedList from '@editorjs/nested-list'
@@ -138,10 +140,14 @@ const INLINE_TOOLBAR_ORDER = [
 	'color',
 ]
 
+// Frame height used by the embed services that render a raw <iframe> rather
+// than a Plyr-backed .video-player div.
+const embedFrameHeight = () => (window.innerWidth < 640 ? '15rem' : '30rem')
+
 export function getEditorTools(
 	isInstructorEditor = false,
 	uploadContext = {},
-	{ studentView = false } = {}
+	{ studentView = false, allowedHosts = '' } = {}
 ) {
 	return {
 		header: {
@@ -220,40 +226,39 @@ export function getEditorTools(
 		copyBlock: clipboardTunes.copyBlock,
 		cutBlock: clipboardTunes.cutBlock,
 		pasteBlock: clipboardTunes.pasteBlock,
+		// Generic embed block — the one that shows up in the "+" menu. Takes an
+		// <iframe> snippet or a link, and hands YouTube/Vimeo/Cloudflare/Bunny
+		// links off to the `embed` tool below so those keep their Plyr player.
+		iframe: {
+			class: Iframe,
+			inlineToolbar: false,
+			config: { allowedHosts },
+		},
 		embed: {
 			class: Embed,
 			inlineToolbar: false,
 			config: {
 				services: {
+					// regex/embedUrl/id for the four video services live in
+					// utils/iframeEmbed.ts, which the iframe block matches against
+					// to decide what to hand over here. Only `html` stays local —
+					// it reads window.innerWidth, which that module avoids.
 					youtube: {
-						regex: /^(?:https?:\/\/)?(?:www\.)?(?:(?:youtu\.be\/)|(?:youtube\.com)\/(?:v\/|u\/\w\/|embed\/|watch))(?:(?:\?v=)?([^#&?=]*))?((?:[?&]\w*=\w*)*)$/,
-						embedUrl: '<%= remote_id %>',
+						...EMBED_SERVICES.youtube,
 						/* 'https://www.youtube.com/embed/<%= remote_id %>?origin=https://plyr.io&amp;iv_load_policy=3&amp;modestbranding=1&amp;playsinline=1&amp;showinfo=0&amp;rel=0&amp;enablejsapi=1' */
 						html: `<div class="video-player" data-plyr-provider="youtube"></div>`,
-						id: ([id]) => id,
 					},
 					vimeo: {
-						regex: /^(?:http[s]?:\/\/)?(?:www\.)?vimeo\.com\/(\d+)(?:\/([a-zA-Z0-9]+))?(?:\?[^\s]*)?$/,
-						embedUrl:
-							'https://player.vimeo.com/video/<%= remote_id %>',
+						...EMBED_SERVICES.vimeo,
 						html: `<div class="video-player" data-plyr-provider="vimeo"></div>`,
-						id: ([id, hash]) => (hash ? `${id}?h=${hash}` : id),
 					},
 					cloudflareStream: {
-						regex: /^https:\/\/customer-[a-z0-9]+\.cloudflarestream\.com\/([a-f0-9]{32})\/watch$/,
-						embedUrl:
-							'https://iframe.videodelivery.net/<%= remote_id %>',
-						html: `<iframe style="width:100%; height: ${
-							window.innerWidth < 640 ? '15rem' : '30rem'
-						};" frameborder="0" allowfullscreen></iframe>`,
+						...EMBED_SERVICES.cloudflareStream,
+						html: `<iframe style="width:100%; height: ${embedFrameHeight()};" frameborder="0" allowfullscreen></iframe>`,
 					},
 					bunnyStream: {
-						regex: /^https:\/\/(?:iframe\.mediadelivery\.net|video\.bunnycdn\.com|player\.mediadelivery\.net)\/play\/([a-zA-Z0-9]+\/[a-zA-Z0-9-]+)$/,
-						embedUrl:
-							'https://player.mediadelivery.net/embed/<%= remote_id %>',
-						html: `<iframe style="width:100%; height: ${
-							window.innerWidth < 640 ? '15rem' : '30rem'
-						};" frameborder="0" allowfullscreen></iframe>`,
+						...EMBED_SERVICES.bunnyStream,
+						html: `<iframe style="width:100%; height: ${embedFrameHeight()};" frameborder="0" allowfullscreen></iframe>`,
 					},
 					codepen: true,
 					aparat: {

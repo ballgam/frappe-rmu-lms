@@ -10,6 +10,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import EditorJS from '@editorjs/editorjs'
 import DragDrop from 'editorjs-drag-drop'
 import { enablePlyr, getEditorTools, getEditorTunes } from '@/utils'
+import { useSettings } from '@/stores/settings'
 
 const props = defineProps({
 	uploadContext: {
@@ -74,9 +75,16 @@ function ensureTrailingBlock() {
 }
 
 onMounted(() => {
+	// Read the embed allowlist here rather than inside the iframe tool: EditorJS
+	// blocks mount outside the app's Vue tree, so the store has to be reached
+	// from a component and passed down through tool config.
+	const { settings } = useSettings()
+
 	editor = new EditorJS({
 		holder: holderRef.value,
-		tools: getEditorTools(false, props.uploadContext),
+		tools: getEditorTools(false, props.uploadContext, {
+			allowedHosts: settings.data?.allowed_embed_hosts,
+		}),
 		tunes: getEditorTunes(),
 		defaultBlock: 'markdown',
 		i18n: {

@@ -360,6 +360,131 @@ class TestLessonBlockExtraction(unittest.TestCase):
 		self.assertEqual(self._assignment_ids("https://www.youtube.com/watch?v=htpg8CuD1Ec"), [])
 
 
+def _iframe_block(src, **data):
+	"""An EditorJS `iframe` block as the editor persists it — src plus primitives,
+	never HTML. See lms/lms/embed_hosts.py for why."""
+	return {
+		"type": "iframe",
+		"data": {
+			"src": src,
+			"title": "",
+			"caption": "",
+			"aspectRatio": "16:9",
+			"height": None,
+			"allowFullscreen": True,
+			**data,
+		},
+	}
+
+
+class TestStripDisallowedIframes(unittest.TestCase):
+	"""The server-side half of the embed allowlist. The editor also refuses a
+	disallowed host, but that's UX — the frontend isn't in the path of a crafted
+	frappe.client.set_value, so this is the control that actually holds.
+	"""
+
+	def _strip(self, content, hosts=("h5p.org",)):
+		from lms.lms.doctype.course_lesson.course_lesson import strip_disallowed_iframes
+
+		with patch(
+			"lms.lms.doctype.course_lesson.course_lesson.get_allowed_embed_hosts",
+			return_value=list(hosts),
+		):
+			return strip_disallowed_iframes(content)
+
+	def _types(self, content):
+		return [block["type"] for block in json.loads(content)["blocks"]]
+
+	def test_keeps_an_allowed_iframe(self):
+		content = _content(_iframe_block("https://h5p.org/h5p/embed/1"))
+		self.assertEqual(self._types(self._strip(content)), ["iframe"])
+
+	def test_keeps_a_subdomain_of_an_allowed_host(self):
+		content = _content(_iframe_block("https://embed.h5p.org/x"))
+		self.assertEqual(self._types(self._strip(content)), ["iframe"])
+
+	def test_drops_a_disallowed_iframe(self):
+		content = _content(_iframe_block("https://attacker.test/evil"))
+		self.assertEqual(self._types(self._strip(content)), [])
+
+	def test_drops_lookalike_and_non_https_srcs(self):
+		for src in (
+			"https://evil-h5p.org/x",
+			"https://h5p.org.attacker.test/x",
+			"http://h5p.org/x",
+			"javascript:alert(1)",
+			"",
+		):
+			with self.subTest(src=src):
+				content = _content(_iframe_block(src))
+				self.assertEqual(self._types(self._strip(content)), [])
+
+	def test_keeps_every_other_block_around_a_dropped_iframe(self):
+		content = _content(
+			NON_EMBED_BLOCKS["header"],
+			_iframe_block("https://attacker.test/evil"),
+			NON_EMBED_BLOCKS["quiz"],
+			_iframe_block("https://h5p.org/h5p/embed/1"),
+		)
+		self.assertEqual(self._types(self._strip(content)), ["header", "quiz", "iframe"])
+
+	def test_content_without_an_offending_block_is_returned_byte_identical(self):
+		"""The common save path must not perturb `time`/`version` or re-serialise
+		blocks that get_editorjs_blocks would have dropped on read."""
+		for content in (
+			_content(NON_EMBED_BLOCKS["header"], NON_EMBED_BLOCKS["quiz"]),
+			_content(_iframe_block("https://h5p.org/h5p/embed/1")),
+			_content(_embed_block("youtube", EMBED_SERVICE_URLS["youtube"])),
+		):
+			with self.subTest(content=content):
+				self.assertEqual(self._strip(content), content)
+
+	def test_fails_soft_on_content_that_is_not_editorjs_json(self):
+		"""A Desk-edited textarea or a legacy lesson must not raise out of validate()."""
+		for content in ("", None, "https://www.youtube.com/watch?v=htpg8CuD1Ec", "[]", "{}"):
+			with self.subTest(content=content):
+				self.assertEqual(self._strip(content), content)
+
+	def test_tolerates_a_malformed_iframe_block(self):
+		content = json.dumps({"blocks": [{"type": "iframe"}, {"type": "iframe", "data": None}]})
+		# get_editorjs_blocks drops the data=None block on read; neither has an
+		# allowed src, so nothing survives — and nothing raises.
+		self.assertEqual(self._types(self._strip(content)), [])
+
+
+class TestIframeBlockSurvivesSanitizer(unittest.TestCase):
+	"""The constraint the whole iframe block is designed around: sanitize_editorjs
+	puts every stored string containing < or > through sanitize_html, which strips
+	<iframe>. Storing src + primitives is what keeps an embed intact across a
+	save/reload round trip — if this fails, saved embeds vanish on reload.
+	"""
+
+	def test_src_is_unchanged_by_sanitize_editorjs(self):
+		from lms.lms.utils import sanitize_editorjs
+
+		src = "https://h5p.org/h5p/embed/1234?a=1&b=2"
+		content = _content(_iframe_block(src, title="A bold title", caption="Try it"))
+		data = json.loads(sanitize_editorjs(content))
+
+		block = data["blocks"][0]
+		self.assertEqual(block["type"], "iframe")
+		self.assertEqual(block["data"]["src"], src)
+		self.assertEqual(block["data"]["title"], "A bold title")
+		self.assertEqual(block["data"]["caption"], "Try it")
+		self.assertTrue(block["data"]["allowFullscreen"])
+
+	def test_a_block_holding_raw_html_would_not_survive(self):
+		"""Documents why the block never stores markup: the same round trip that
+		leaves a src untouched mangles an iframe snippet."""
+		from lms.lms.utils import sanitize_editorjs
+
+		content = json.dumps(
+			{"blocks": [{"type": "iframe", "data": {"src": '<iframe src="https://h5p.org/x">'}}]}
+		)
+		out = json.loads(sanitize_editorjs(content))
+		self.assertNotIn("<iframe", out["blocks"][0]["data"]["src"])
+
+
 class TestRenameSettledUntitledLessons(BaseTestUtils):
 	def setUp(self):
 		super().setUp()

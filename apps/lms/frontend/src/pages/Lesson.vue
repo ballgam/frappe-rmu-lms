@@ -555,7 +555,17 @@ const renderEditor = (holder, content) => {
 		document.getElementById(holder).innerHTML = ''
 	return new EditorJS({
 		holder: holder,
-		tools: getEditorTools(false, {}, { studentView: isStudentView.value }),
+		// The allowlist is passed on the render side too, not just when
+		// authoring: a lesson saved before an administrator narrowed the list
+		// still holds the old src, and this is what stops it being framed.
+		tools: getEditorTools(
+			false,
+			{},
+			{
+				studentView: isStudentView.value,
+				allowedHosts: settingsStore.settings?.data?.allowed_embed_hosts,
+			}
+		),
 		data: sanitizeEditorJs(JSON.parse(content)),
 		readOnly: true,
 		defaultBlock: 'embed',

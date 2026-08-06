@@ -31,6 +31,13 @@ vi.mock('@/utils', () => ({
 	enablePlyr: () => {},
 }))
 
+// BlockEditor reads the embed allowlist off the settings store to pass into the
+// iframe tool's config. Stubbed here for the same reason '@/utils' is: the real
+// module reaches frappe-ui, whose resources plugin can't resolve under vitest.
+vi.mock('@/stores/settings', () => ({
+	useSettings: () => ({ settings: { data: {} } }),
+}))
+
 import BlockEditor from '@/components/BlockEditor.vue'
 
 describe('BlockEditor onReady teardown race', () => {

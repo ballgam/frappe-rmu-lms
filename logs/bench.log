@@ -100,3 +100,4 @@
 2026-08-06 15:18:15,090 INFO /Users/anthonywaichungo/.local/bin/bench watch
 2026-08-06 15:18:15,092 INFO /Users/anthonywaichungo/.local/bin/bench worker
 2026-08-06 15:18:15,095 INFO /Users/anthonywaichungo/.local/bin/bench socketio
+2026-08-06 16:29:01,711 INFO /Users/anthonywaichungo/.local/bin/bench --site learning.test run-tests --module lms.lms.doctype.course_lesson.test_course_lesson
