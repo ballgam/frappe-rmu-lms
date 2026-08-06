@@ -1,0 +1,48 @@
+2026-08-04 21:20:39,120 INFO ipython === bench console session ===
+2026-08-04 21:20:39,120 INFO ipython rows = frappe.get_all("File", filters={"is_private": 0, "file_url": ["like", "/private/files/%"]}, fields=["name", "file_url", "attached_to_doctype", "attached_to_name"])
+2026-08-04 21:20:39,120 INFO ipython print("CORRUPT_ROWS", len(rows))
+2026-08-04 21:20:39,120 INFO ipython for r in rows: print("  ", r.file_url, "|", r.attached_to_doctype, r.attached_to_name)
+2026-08-04 21:20:39,121 INFO ipython courses = frappe.get_all("LMS Course", filters={"image": ["like", "/files/%"]}, fields=["name", "image"])
+2026-08-04 21:20:39,121 INFO ipython print("COURSES", len(courses))
+2026-08-04 21:20:39,121 INFO ipython for c in courses: print("  ", c.name, c.image)
+2026-08-04 21:20:39,121 INFO ipython === session end ===
+2026-08-04 21:21:19,878 INFO ipython === bench console session ===
+2026-08-04 21:21:19,878 INFO ipython from lms.patches.v2_0.fix_public_image_file_urls import execute
+2026-08-04 21:21:19,878 INFO ipython execute()
+2026-08-04 21:21:19,878 INFO ipython frappe.db.commit()
+2026-08-04 21:21:19,878 INFO ipython print("REMAINING", frappe.db.count("File", {"is_private": 0, "file_url": ["like", "/private/files/%"]}))
+2026-08-04 21:21:19,878 INFO ipython for r in frappe.get_all("File", filters={"file_url": ["like", "/files/Screenshot%"]}, fields=["file_url", "is_private"]): print("  ", r.file_url, r.is_private)
+2026-08-04 21:21:19,878 INFO ipython === session end ===
+2026-08-04 21:21:53,824 INFO ipython === bench console session ===
+2026-08-04 21:21:53,824 INFO ipython for c in frappe.get_all("LMS Course", fields=["name","image"]): print("COURSE", c.name, "|", c.image)
+2026-08-04 21:21:53,825 INFO ipython for r in frappe.get_all("File", filters={"file_name": ["like", "%Screenshot%"]}, fields=["name","file_name","file_url","is_private","content_hash"]): print("FILE", r.file_name, "|", r.file_url, "|", r.content_hash)
+2026-08-04 21:21:53,825 INFO ipython === session end ===
+2026-08-04 21:22:48,141 INFO ipython === bench console session ===
+2026-08-04 21:22:48,141 INFO ipython import importlib, lms.patches.v2_0.fix_public_image_file_urls as p
+2026-08-04 21:22:48,141 INFO ipython importlib.reload(p)
+2026-08-04 21:22:48,141 INFO ipython p.execute()
+2026-08-04 21:22:48,141 INFO ipython for c in frappe.get_all("LMS Course", filters={"image": ["is", "set"]}, fields=["name","image"]): print("COURSE", c.name, "|", c.image)
+2026-08-04 21:22:48,141 INFO ipython print("STRANDED", frappe.db.count("File", {"is_private": 0, "file_url": ["like", "/private/files/%"]}))
+2026-08-04 21:22:48,141 INFO ipython === session end ===
+2026-08-04 21:23:31,122 INFO ipython === bench console session ===
+2026-08-04 21:23:31,122 INFO ipython import base64, os
+2026-08-04 21:23:31,122 INFO ipython PIXEL = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+2026-08-04 21:23:31,122 INFO ipython h = frappe.generate_hash(length=6)
+2026-08-04 21:23:31,123 INFO ipython f = frappe.get_doc({"doctype":"File","file_name":f"cover_{h}.gif","is_private":1,
+    "content":base64.b64encode(PIXEL).decode(),"decode":True}).insert(ignore_permissions=True)
+2026-08-04 21:23:31,123 INFO ipython print("UPLOADED", f.file_url)
+2026-08-04 21:23:31,123 INFO ipython c = frappe.get_doc("LMS Course", "translation-test")
+2026-08-04 21:23:31,123 INFO ipython before = c.image
+2026-08-04 21:23:31,123 INFO ipython c.image = f.file_url
+2026-08-04 21:23:31,123 INFO ipython c.save(ignore_permissions=True)
+2026-08-04 21:23:31,123 INFO ipython frappe.db.commit()
+2026-08-04 21:23:31,123 INFO ipython name = c.image.rsplit("/",1)[-1]
+2026-08-04 21:23:31,123 INFO ipython print("COURSE_IMAGE", c.image)
+2026-08-04 21:23:31,123 INFO ipython print("IN_PUBLIC", os.path.exists(frappe.get_site_path("public","files",name)))
+2026-08-04 21:23:31,123 INFO ipython print("IN_PRIVATE", os.path.exists(frappe.get_site_path("private","files",name)))
+2026-08-04 21:23:31,123 INFO ipython print("FILE_ROW", frappe.db.get_value("File", f.name, ["is_private","file_url"]))
+2026-08-04 21:23:31,123 INFO ipython # restore
+2026-08-04 21:23:31,124 INFO ipython c.image = before; c.save(ignore_permissions=True)
+2026-08-04 21:23:31,124 INFO ipython frappe.delete_doc("File", f.name, force=True); frappe.db.commit()
+2026-08-04 21:23:31,124 INFO ipython print("RESTORED", frappe.db.get_value("LMS Course","translation-test","image"))
+2026-08-04 21:23:31,124 INFO ipython === session end ===

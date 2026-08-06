@@ -1,0 +1,221 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:video_id",
+ "creation": "2026-08-04 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "video_id",
+  "title",
+  "column_break_head",
+  "status",
+  "is_private",
+  "section_break_source",
+  "source_file_url",
+  "content_hash",
+  "column_break_source",
+  "attached_to_doctype",
+  "attached_to_name",
+  "section_break_output",
+  "manifest_url",
+  "poster_url",
+  "column_break_output",
+  "duration",
+  "width",
+  "height",
+  "section_break_tracks",
+  "audio_tracks",
+  "section_break_error",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "description": "Random hex id; also the on-disk folder name under files/videos/.",
+   "fieldname": "video_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Video ID",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Pending\nProbing\nPackaging\nReady\nFailed",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Private videos live under private/files/videos/ and require a signed token. Public ones (course preview videos) are served straight by the web server.",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "label": "Is Private",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_source",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
+   "fieldname": "source_file_url",
+   "fieldtype": "Data",
+   "label": "Source File URL",
+   "read_only": 1
+  },
+  {
+   "description": "SHA-256 of the uploaded file, used to reuse an existing package instead of transcoding the same bytes twice.",
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attached_to_doctype",
+   "fieldtype": "Link",
+   "label": "Attached To Doctype",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attached_to_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Attached To Name",
+   "options": "attached_to_doctype",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_output",
+   "fieldtype": "Section Break",
+   "label": "Package"
+  },
+  {
+   "fieldname": "manifest_url",
+   "fieldtype": "Data",
+   "label": "Manifest URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "poster_url",
+   "fieldtype": "Data",
+   "label": "Poster URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_output",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Float",
+   "label": "Duration (seconds)",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "width",
+   "fieldtype": "Int",
+   "label": "Width",
+   "read_only": 1
+  },
+  {
+   "fieldname": "height",
+   "fieldtype": "Int",
+   "label": "Height",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_tracks",
+   "fieldtype": "Section Break",
+   "label": "Audio Tracks"
+  },
+  {
+   "fieldname": "audio_tracks",
+   "fieldtype": "Table",
+   "label": "Audio Tracks",
+   "options": "LMS Video Audio Track"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_error",
+   "fieldtype": "Section Break",
+   "label": "Diagnostics"
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Long Text",
+   "label": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-04 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "LMS Video",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Moderator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Course Creator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

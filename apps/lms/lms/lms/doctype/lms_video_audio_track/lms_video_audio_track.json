@@ -1,0 +1,111 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-08-04 09:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "track_index",
+  "segment_dir",
+  "manifest_lang",
+  "column_break_lang",
+  "language",
+  "label",
+  "section_break_media",
+  "codec",
+  "channels",
+  "column_break_media",
+  "is_default",
+  "detected_language"
+ ],
+ "fields": [
+  {
+   "description": "Index of this audio stream in the source file, as reported by ffprobe.",
+   "fieldname": "track_index",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Track Index",
+   "read_only": 1
+  },
+  {
+   "description": "Folder this track's segments live in, e.g. audio_eng. Named from the code requested at packaging time, which is not always the code that ends up in the manifest.",
+   "fieldname": "segment_dir",
+   "fieldtype": "Data",
+   "label": "Segment Folder",
+   "read_only": 1
+  },
+  {
+   "description": "The lang attribute the packager actually wrote into the DASH manifest — it normalizes eng to en, som to so, and leaves private-use codes alone. Stable join key between the manifest AdaptationSet and this row; never edited after packaging.",
+   "fieldname": "manifest_lang",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Manifest Language Code",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_lang",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "ISO 639-2 code the instructor assigned. Display-only — changing it does not require repackaging.",
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language"
+  },
+  {
+   "description": "Name shown in the player's audio menu.",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "fieldname": "section_break_media",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "codec",
+   "fieldtype": "Data",
+   "label": "Source Codec",
+   "read_only": 1
+  },
+  {
+   "fieldname": "channels",
+   "fieldtype": "Int",
+   "label": "Channels",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_media",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Is Default"
+  },
+  {
+   "description": "Language tag found in the source container, before any instructor edit. 'und' when the container carried none.",
+   "fieldname": "detected_language",
+   "fieldtype": "Data",
+   "label": "Detected Language",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-04 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "LMS Video Audio Track",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
