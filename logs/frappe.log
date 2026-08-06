@@ -454,3 +454,27 @@ Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.l
 2026-08-06 16:40:07,378 ERROR frappe New Exception collected in error log
 Site: learning.test
 Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:10:28,831 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:10:36,519 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:11:13,798 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:11:21,880 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:11:37,516 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:12:00,704 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:12:03,954 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}
+2026-08-06 17:12:08,967 ERROR frappe New Exception collected in error log
+Site: learning.test
+Form Dict: {'filters': {'published': 1, 'upcoming': 0, 'live': 1}, 'cmd': 'lms.lms.utils.get_course_count'}

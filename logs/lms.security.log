@@ -3,3 +3,5 @@
 2026-08-05 07:54:05,196 WARNING lms.security Video access denied: user=tondegwa+lms1@gmail.com video_id=8ddd235a43d958ad reason=video not referenced by any lesson
 2026-08-05 07:55:41,641 WARNING lms.security Video access denied: user=tondegwa+lms1@gmail.com video_id=8ddd235a43d958ad reason=video not referenced by any lesson
 2026-08-06 15:20:20,582 WARNING lms.security Video access denied: user=tondegwa+lms1@gmail.com video_id=3008ebf241336347 reason=video not referenced by any lesson
+2026-08-06 17:10:15,718 WARNING lms.security Lesson resource access denied: user=tondegwa+lms1@gmail.com file_url=/private/files/lecture_218bd6.mp4 reason=no matching private file
+2026-08-06 17:10:15,736 WARNING lms.security Lesson resource access denied: user=tondegwa+lms1@gmail.com file_url=/private/files/lecture_218bd6.mp4 reason=no matching private file
