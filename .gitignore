@@ -1,3 +1,7 @@
 sites/learning.test/private/files
 sites/learning.test/public/files
 sites/learning.test/logs
+logs/worker.error.log
+logs/worker.log
+logs/frappe.log
+logs/backup.log

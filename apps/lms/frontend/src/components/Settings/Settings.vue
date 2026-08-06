@@ -142,6 +142,23 @@ const tabsStructure = computed(() => {
 							],
 						},
 						{
+							label: 'Embeds',
+							columns: [
+								{
+									fields: [
+										{
+											label: 'Allowed Embed Domains',
+											name: 'allowed_embed_hosts',
+											type: 'textarea',
+											rows: 5,
+											description:
+												'Domains lesson authors may embed in an iframe, one per line. Subdomains are included automatically (figma.com also allows embed.figma.com). Leave blank to use the built-in list.',
+										},
+									],
+								},
+							],
+						},
+						{
 							label: 'Notifications',
 							columns: [
 								{
