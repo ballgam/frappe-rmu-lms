@@ -1,7 +1,21 @@
-sites/learning.test/private/files
-sites/learning.test/public/files
-sites/learning.test/logs
-logs/worker.error.log
-logs/worker.log
-logs/frappe.log
-logs/backup.log
+# Operating-system metadata
+.DS_Store
+
+# Bench runtime environment and process state
+env/
+logs/
+config/pids/
+
+# Bench-generated assets
+sites/assets/
+
+# Per-site runtime data
+sites/*/logs/
+sites/*/indexes/
+sites/*/private/files/
+sites/*/public/files/
+sites/*/*.db
+sites/*/site_config.json
+sites/common_site_config.json
+sites/*/touched_tables.json
+sites/*/.test_log
