@@ -32,6 +32,14 @@ DEFAULT_AUDIO_CHANNELS = 2
 DEFAULT_CRF = 21
 DEFAULT_PRESET = "medium"
 
+#: A track added to an existing package must run the length of the video it
+#: joins, or the manifest's duration stops describing it. Anything inside this
+#: is rounding and is left alone; anything past it up to the tolerance below is
+#: padded or trimmed to fit; anything beyond that is the wrong file.
+DURATION_EPSILON = 0.5
+DURATION_TOLERANCE_RATIO = 0.02
+DURATION_TOLERANCE_FLOOR = 5.0
+
 
 @dataclass
 class VideoStream:
@@ -44,6 +52,8 @@ class VideoStream:
 	height: int = 0
 	rotation: int = 0
 	avg_frame_rate: float = 0.0
+	#: 0.0 when the container reports no per-stream duration.
+	duration: float = 0.0
 
 
 @dataclass
@@ -74,6 +84,24 @@ class MediaInfo:
 	@property
 	def has_audio(self) -> bool:
 		return bool(self.audios)
+
+	@property
+	def playable_duration(self) -> float:
+		"""How long the picture runs, which is what the package will be.
+
+		`duration` is the container's, and a container is as long as its
+		longest stream — so a source carrying a dub that overruns the picture
+		reports that dub's length. Storing that would leave the video's
+		duration describing an audio track: imported tracks would be padded
+		with `apad` past the last video segment, and the guard that rejects
+		the wrong upload would be measuring against the wrong number.
+
+		Falls back to the container for audio-only sources and for muxers that
+		write no per-stream duration.
+		"""
+		if self.video and self.video.duration > 0:
+			return self.video.duration
+		return self.duration
 
 
 def _to_float(value, default=0.0) -> float:
@@ -153,6 +181,7 @@ def parse_probe(data: dict) -> MediaInfo:
 				height=_to_int(stream.get("height")),
 				rotation=_parse_rotation(stream),
 				avg_frame_rate=_parse_frame_rate(stream.get("avg_frame_rate")),
+				duration=_to_float(stream.get("duration")),
 			)
 
 		elif codec_type == "audio":
@@ -205,20 +234,30 @@ def assign_manifest_langs(audios: list[AudioStream]) -> list[AudioStream]:
 	renaming a track is a database update rather than a re-encode.
 	"""
 	used: set[str] = set()
-	codes = private_use_codes()
 
 	for audio in audios:
-		detected = (audio.detected_language or "").strip().lower()
-		if detected not in UNKNOWN_LANGUAGES and detected not in used and 2 <= len(detected) <= 3:
-			audio.manifest_lang = detected
-		else:
-			for code in codes:
-				if code not in used:
-					audio.manifest_lang = code
-					break
+		audio.manifest_lang = assign_manifest_lang(audio.detected_language, used)
 		used.add(audio.manifest_lang)
 
 	return audios
+
+
+def assign_manifest_lang(detected: str, used: set[str]) -> str:
+	"""Pick a `manifest_lang` for one stream, avoiding everything in `used`.
+
+	Split out of `assign_manifest_langs` so a track imported into an existing
+	package — months after the original upload — can reserve a code against the
+	ones the live manifest already carries.
+	"""
+	code = (detected or "").strip().lower()
+	if code not in UNKNOWN_LANGUAGES and code not in used and 2 <= len(code) <= 3:
+		return code
+
+	for candidate in private_use_codes():
+		if candidate not in used:
+			return candidate
+
+	raise ValueError("ran out of private-use language codes")
 
 
 def default_track_label(audio: AudioStream, position: int) -> str:
@@ -311,3 +350,54 @@ def build_audio_args(audio: AudioStream, reason: str) -> list[str]:
 		"-ac", str(min(audio.channels or DEFAULT_AUDIO_CHANNELS, DEFAULT_AUDIO_CHANNELS)),
 		"-ar", "48000",
 	]
+
+
+def duration_tolerance(target: float) -> float:
+	"""How far an imported track may be from the video's length and still be it.
+
+	Proportional, because two seconds adrift on a 90-second clip is a different
+	file while two seconds adrift on a two-hour lecture is a trailing silence
+	the editor trimmed.
+	"""
+	return max(DURATION_TOLERANCE_FLOOR, abs(target) * DURATION_TOLERANCE_RATIO)
+
+
+def needs_duration_alignment(source: float, target: float) -> bool:
+	"""Whether an imported track has to be padded or trimmed to fit the video."""
+	if not target or not source:
+		return False
+	return abs(source - target) > DURATION_EPSILON
+
+
+def duration_mismatch_reason(source: float, target: float) -> str:
+	"""Why this file cannot be the audio for a video of `target` seconds, or "".
+
+	Rejecting rather than padding a wildly wrong length is the point: silently
+	appending fifty minutes of silence to a forty-minute file turns "you picked
+	the wrong upload" into a translation that mysteriously stops half way.
+	"""
+	if not target:
+		return ""
+	if not source:
+		return "the uploaded file reports no duration"
+
+	drift = abs(source - target)
+	tolerance = duration_tolerance(target)
+	if drift <= tolerance:
+		return ""
+
+	return (
+		f"the uploaded audio is {source:.1f}s long but the video is {target:.1f}s "
+		f"({drift:.1f}s apart, at most {tolerance:.1f}s allowed)"
+	)
+
+
+def build_audio_align_args(target_duration: float) -> list[str]:
+	"""Pad with silence / cut to exactly `target_duration`.
+
+	`apad` alone would run forever; it is `-t` that ends the output, and the pair
+	together mean "however long this file is, make it exactly that". Being a
+	filter, it rules out a stream copy — which is why callers force a re-encode
+	reason whenever alignment is on.
+	"""
+	return ["-af", "apad", "-t", f"{target_duration:.3f}"]

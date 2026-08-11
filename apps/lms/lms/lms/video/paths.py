@@ -28,8 +28,19 @@ from frappe.utils import get_files_path
 VIDEO_ROOT = "videos"
 TMP_DIRNAME = ".tmp"
 
+#: Staging for audio tracks imported into an already-packaged video. A sibling
+#: of the per-video staging folder rather than a child of it, so a full
+#: repackage's `rmtree` of its own staging cannot destroy an in-flight import.
+TRACK_TMP_DIRNAME = "tracks"
+
 #: Source containers accepted for packaging.
 VIDEO_EXTENSIONS = ("mp4", "mov", "mkv", "avi", "webm", "m4v", "mpeg", "mpg", "wmv", "flv", "3gp")
+
+#: Containers accepted as the source of an audio track added to an existing
+#: video. Video containers are accepted for this too — a translation vendor
+#: usually returns a re-dubbed mp4, not a bare audio file — so the full set of
+#: importable extensions is this plus VIDEO_EXTENSIONS.
+AUDIO_EXTENSIONS = ("mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "wma", "mka")
 
 #: `frappe.generate_hash` is `secrets.token_hex`, so ids are always lowercase hex.
 VIDEO_ID_RE = re.compile(r"^[a-f0-9]{16}$")
@@ -42,6 +53,11 @@ SEGMENT_PATH_RE = re.compile(r"^[A-Za-z0-9_]{1,40}/[A-Za-z0-9_.-]{1,80}$")
 MANIFEST_NAME = "manifest.mpd"
 POSTER_NAME = "poster.jpg"
 PROBE_NAME = "probe.json"
+
+#: Throwaway manifest the packager writes when a single audio track is packaged
+#: on its own. Read for its one AdaptationSet, then discarded — it never reaches
+#: the live video folder.
+TRACK_MANIFEST_NAME = "track.mpd"
 
 #: Sub-folders the packager writes into, one per stream. Kept here because
 #: SEGMENT_PATH_RE has to admit exactly these shapes and nothing else.
@@ -81,6 +97,24 @@ def tmp_root() -> str:
 	return get_files_path(VIDEO_ROOT, TMP_DIRNAME, is_private=True)
 
 
+def track_tmp_root() -> str:
+	return get_files_path(VIDEO_ROOT, TMP_DIRNAME, TRACK_TMP_DIRNAME, is_private=True)
+
+
+def track_tmp_dir(video_id: str, operation: str) -> str:
+	"""Staging folder for one audio-track import.
+
+	Keyed by operation as well as video so two imports queued against the same
+	video never share a directory, and so the folder left behind by a killed
+	worker names the row that owns it.
+	"""
+	if not is_valid_video_id(video_id):
+		frappe.throw(frappe._("Invalid video id"))
+	if not re.match(r"^[A-Za-z0-9_-]{1,64}$", operation or ""):
+		frappe.throw(frappe._("Invalid track operation id"))
+	return os.path.join(track_tmp_root(), video_id, operation)
+
+
 def resolve_inside(video_id: str, relative_path: str, is_private: bool = True) -> str:
 	"""Absolute path of `relative_path` within a video folder, or throw.
 
@@ -117,12 +151,27 @@ def poster_url(video_id: str, is_private: bool = True) -> str:
 	return video_url(video_id, POSTER_NAME, is_private=is_private)
 
 
+def _extension(file_url: str) -> str:
+	return os.path.splitext(file_url.split("?")[0])[1].lstrip(".").lower()
+
+
 def is_video_file(file_url: str) -> bool:
 	"""Whether a File's url looks like a source video we should package."""
 	if not file_url:
 		return False
-	ext = os.path.splitext(file_url.split("?")[0])[1].lstrip(".").lower()
-	return ext in VIDEO_EXTENSIONS
+	return _extension(file_url) in VIDEO_EXTENSIONS
+
+
+def is_audio_file(file_url: str) -> bool:
+	"""Whether a File's url looks like an audio-only container."""
+	if not file_url:
+		return False
+	return _extension(file_url) in AUDIO_EXTENSIONS
+
+
+def is_importable_audio_source(file_url: str) -> bool:
+	"""Whether audio can be imported out of this file into an existing package."""
+	return is_audio_file(file_url) or is_video_file(file_url)
 
 
 def is_packaged_url(url: str) -> bool:

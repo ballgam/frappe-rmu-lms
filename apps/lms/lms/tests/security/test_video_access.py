@@ -1,12 +1,17 @@
 import json
 import os
 import shutil
+from unittest.mock import patch
 
 import frappe
-from frappe.tests import UnitTestCase
+from frappe.tests.utils import FrappeTestCase as UnitTestCase
 
 from lms.lms.test_helpers import BaseTestUtils
-from lms.lms.video import api, paths, pipeline, tokens
+from lms.lms.video import api, audio_tracks, paths, pipeline, tokens
+
+# The same shape the packager writes for this fixture's two tracks, kept in one
+# place rather than copied.
+from lms.tests.test_video_manifest import TWO_TRACK_MANIFEST
 
 
 class TestVideoAccess(BaseTestUtils, UnitTestCase):
@@ -55,18 +60,48 @@ class TestVideoAccess(BaseTestUtils, UnitTestCase):
 				"duration": 118.8,
 				"manifest_url": None,
 				"audio_tracks": [
-					{"manifest_lang": "en", "label": "English", "language": "eng", "is_default": 1},
-					{"manifest_lang": "so", "label": "Somali", "language": "som", "is_default": 0},
+					{
+						"manifest_lang": "en",
+						"segment_dir": "audio_eng",
+						"label": "English",
+						"language": "eng",
+						"is_default": 1,
+						"origin": "Source File",
+						"status": "Ready",
+					},
+					{
+						"manifest_lang": "so",
+						"segment_dir": "audio_som",
+						"label": "Somali",
+						"language": "som",
+						"is_default": 0,
+						"origin": "Source File",
+						"status": "Ready",
+					},
 				],
 			}
 		).insert(ignore_permissions=True)
 		self.video.db_set("manifest_url", paths.manifest_url(self.video.video_id, is_private=True))
 		self.cleanup_items.append(("LMS Video", self.video.name))
 		self.video_id = self.video.video_id
+		self._write_manifest()
 		frappe.db.commit()
+
+	def _write_manifest(self):
+		"""Put a real MPD on disk for the fixture's two tracks.
+
+		Anything that decides whether a track is really published asks the
+		manifest rather than the rows, so without this every row looks
+		unpublished and the guards keyed on that never engage.
+		"""
+		self.video_folder = paths.video_dir(self.video_id, is_private=True)
+		os.makedirs(self.video_folder, exist_ok=True)
+		with open(paths.manifest_path(self.video_id, is_private=True), "w") as handle:
+			handle.write(TWO_TRACK_MANIFEST)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
+		shutil.rmtree(getattr(self, "video_folder", ""), ignore_errors=True)
 		super().tearDown()
 
 	# --- the gate ---------------------------------------------------------
@@ -182,6 +217,131 @@ class TestVideoAccess(BaseTestUtils, UnitTestCase):
 		self.assertEqual(labels["so"], "Somali narration")
 		# The join key is untouched, so the manifest on disk stays valid.
 		self.assertEqual(sorted(labels), ["en", "so"])
+
+	# --- adding and removing tracks ---------------------------------------
+
+	def test_students_cannot_add_an_audio_track(self):
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			audio_tracks.add_audio_track(self.video_id, "/private/files/dub.mp3", label="Hacked")
+
+	def test_students_cannot_remove_an_audio_track(self):
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			audio_tracks.remove_audio_track(self.video_id, "so")
+
+	def test_students_cannot_read_the_authoring_track_list(self):
+		"""It carries the source file urls and error logs of every import."""
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			api.list_audio_tracks(self.video_id)
+
+	def test_an_outsider_cannot_add_a_track(self):
+		frappe.set_user(self.outsider.email)
+		with self.assertRaises(frappe.PermissionError):
+			audio_tracks.add_audio_track(self.video_id, "/private/files/dub.mp3")
+
+	def test_a_file_outside_the_files_directory_is_refused(self):
+		"""The upload url is browser-supplied, so it is the one input that could
+		point the importer at something it has no business reading."""
+		frappe.set_user(self.instructor.email)
+		for bad in ("/private/files/../../site_config.json", "/etc/passwd.mp3"):
+			with self.assertRaises(Exception, msg=f"{bad!r} was not rejected"):
+				audio_tracks.add_audio_track(self.video_id, bad)
+
+	def test_a_file_that_is_neither_audio_nor_video_is_refused(self):
+		frappe.set_user(self.instructor.email)
+		with self.assertRaises(frappe.ValidationError):
+			audio_tracks.add_audio_track(self.video_id, "/private/files/notes.pdf")
+
+	def test_a_failed_preflight_does_not_create_a_pending_track(self):
+		"""A stopped Docker daemon is an environment error, not a failed import."""
+		frappe.set_user(self.instructor.email)
+		before = len(frappe.get_doc("LMS Video", self.video.name).audio_tracks)
+		probe_output = {
+			"format": {"duration": "118.8"},
+			"streams": [{"index": 0, "codec_type": "audio", "codec_name": "aac", "channels": 2}],
+		}
+
+		with (
+			patch.object(pipeline, "absolute_file_path", return_value="/tmp/dub.mp3"),
+			patch.object(pipeline, "run_ffprobe", return_value=probe_output),
+			patch.object(
+				pipeline,
+				"check_video_pipeline",
+				side_effect=pipeline.VideoPipelineError("Docker is not running"),
+			),
+			self.assertRaisesRegex(pipeline.VideoPipelineError, "Docker is not running"),
+		):
+			audio_tracks.add_audio_track(self.video_id, "/private/files/dub.mp3")
+
+		after = len(frappe.get_doc("LMS Video", self.video.name).audio_tracks)
+		self.assertEqual(after, before)
+
+	def test_the_last_track_cannot_be_removed(self):
+		"""A package with no audio AdaptationSet at all plays silently, with no way
+		back short of a full repackage."""
+		frappe.set_user(self.instructor.email)
+		audio_tracks.remove_audio_track(self.video_id, "so")
+
+		with self.assertRaises(frappe.ValidationError):
+			audio_tracks.remove_audio_track(self.video_id, "en")
+
+	def test_removing_a_track_that_never_packaged_skips_the_worker(self):
+		"""Nothing on disk and nothing in the manifest, so queueing work for it
+		would only produce a no-op job."""
+		frappe.set_user("Administrator")
+		doc = frappe.get_doc("LMS Video", self.video.name)
+		doc.append(
+			"audio_tracks",
+			{"manifest_lang": "qaa", "segment_dir": "audio_qaa", "label": "Pending dub",
+			 "origin": "Added", "status": "Pending", "source_file_url": "/private/files/dub.mp3"},
+		)
+		doc.save(ignore_permissions=True)
+
+		frappe.set_user(self.instructor.email)
+		result = audio_tracks.remove_audio_track(self.video_id, "qaa")
+
+		self.assertEqual(
+			sorted(t["manifest_lang"] for t in result["audio_tracks"]), ["en", "so"]
+		)
+
+	# --- what the player is allowed to see ---------------------------------
+
+	def test_a_track_still_importing_is_hidden_from_the_player(self):
+		"""Its segments are not on disk yet, so offering it would put a dead entry
+		in the learner's audio menu."""
+		frappe.set_user("Administrator")
+		doc = frappe.get_doc("LMS Video", self.video.name)
+		doc.append(
+			"audio_tracks",
+			{"manifest_lang": "qaa", "segment_dir": "audio_qaa", "label": "Somali dub",
+			 "origin": "Added", "status": "Processing"},
+		)
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.student.email)
+		info = api.get_playback_info(video_id=self.video_id)
+		self.assertEqual(sorted(t["manifest_lang"] for t in info["audio_tracks"]), ["en", "so"])
+
+		frappe.set_user(self.instructor.email)
+		authoring = api.list_audio_tracks(self.video_id)
+		self.assertEqual(
+			sorted(t["manifest_lang"] for t in authoring["audio_tracks"]), ["en", "qaa", "so"]
+		)
+
+	def test_rows_predating_the_status_field_are_still_offered(self):
+		"""Existing sites' tracks carry no status until the patch runs; treating a
+		blank one as not-Ready would empty every audio menu on the site."""
+		frappe.db.sql(
+			"update `tabLMS Video Audio Track` set status = null where parent = %s", self.video.name
+		)
+		frappe.db.commit()
+
+		frappe.set_user(self.student.email)
+		info = api.get_playback_info(video_id=self.video_id)
+		self.assertEqual(sorted(t["manifest_lang"] for t in info["audio_tracks"]), ["en", "so"])
 
 
 class TestPrivateMediaRewrite(BaseTestUtils, UnitTestCase):

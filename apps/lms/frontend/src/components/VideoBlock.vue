@@ -192,7 +192,10 @@
 			<Button @click="showQuizModal = true">
 				{{ __('Add Quiz to Video') }}
 			</Button>
-			<Button v-if="audioTracks.length" @click="showAudioTrackModal = true">
+			<!-- Shown whenever the video is packaged, not only when it already has
+			     tracks: a silent recording has none, and adding one is exactly what
+			     this opens. -->
+			<Button v-if="canManageAudio" @click="showAudioTrackModal = true">
 				{{ __('Audio Tracks ({0})').format(audioTracks.length) }}
 			</Button>
 		</div>
@@ -312,6 +315,10 @@ const socket = initSocket()
 const isProcessing = computed(() => status.value === 'processing')
 const hasFailed = computed(() => status.value === 'failed')
 
+// Tracks can only be managed against a live package: adding one merges into the
+// manifest Shaka has just loaded, so there has to be one.
+const canManageAudio = computed(() => !!videoId.value && status.value === 'ready')
+
 /**
  * The key every watch-duration record and resume position is stored under.
  *
@@ -343,10 +350,12 @@ onMounted(async () => {
 	}
 	await attach(videoRef.value, { file: props.file, videoId: props.videoId })
 	socket.on('lms_video_status', onVideoStatus)
+	socket.on('lms_video_track_status', onTrackStatus)
 })
 
 onBeforeUnmount(() => {
 	socket.off('lms_video_status', onVideoStatus)
+	socket.off('lms_video_track_status', onTrackStatus)
 	destroy()
 })
 
@@ -367,6 +376,19 @@ const onVideoStatus = (data) => {
 		processingProgress.value = 0
 		reload()
 	}
+}
+
+/**
+ * Pick up a track that finished importing after the modal was closed.
+ *
+ * Authors only. The manifest changed under a learner too, but interrupting a
+ * lecture to add a language they did not ask for is worse than letting them
+ * find it on their next load.
+ */
+const onTrackStatus = (data) => {
+	if (props.readOnly || showAudioTrackModal.value) return
+	if (!data || data.video_id !== videoId.value) return
+	if (data.removed || data.status === 'Ready') reload()
 }
 
 const reload = async () => {
@@ -391,7 +413,14 @@ const retryPackaging = async () => {
 	}
 }
 
-const onTracksUpdated = (tracks) => {
+const onTracksUpdated = ({ tracks, listChanged }) => {
+	// A track was added or removed, so the manifest itself changed and Shaka has
+	// to re-parse it before the new language can be selected.
+	if (listChanged) {
+		reload()
+		return
+	}
+
 	// Labels are display-only, so a rename lands without touching the manifest
 	// or the currently playing buffer.
 	audioTracks.value = audioTracks.value.map((track) => {

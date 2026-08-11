@@ -32,6 +32,12 @@ from lms.lms.video import paths, probe
 #: box is the worst realistic case; beyond this something is wrong.
 SUBPROCESS_TIMEOUT = 6 * 60 * 60
 
+#: Ceiling on the `--version` calls that preflight the tooling. These run inside
+#: a web request, and a Docker daemon that is stopped mid-handshake leaves its
+#: CLI waiting on a socket nobody answers rather than failing — so the ceiling
+#: has to be short enough that the author gets an error instead of a hung tab.
+PREFLIGHT_TIMEOUT = 20
+
 #: How often the encode publishes a progress event. Frequent enough to look
 #: live, rare enough not to flood the socket for every viewer in the room.
 PROGRESS_INTERVAL_SECONDS = 3
@@ -157,6 +163,32 @@ def packager_launcher(staging: str, settings=None) -> tuple[list[str], str | Non
 	return command, None
 
 
+def validate_video_processing_settings(settings):
+	"""Check the paths typed into LMS Settings, without running anything.
+
+	Only fields the admin actually filled in are checked, so a deleted test
+	binary can never be saved. Absent tooling is deliberately *not* an error
+	here: this runs on every settings save, and refusing to save unrelated
+	fields on a bench that simply has no Docker installed is a far worse
+	failure than the misconfiguration it would catch. Whether the tooling can
+	actually run is `check_video_pipeline`'s job, at the point of use.
+
+	Every path is checked regardless of packager mode, because `depends_on`
+	only hides a stale path — switching modes brings it back.
+	"""
+	if not cint(settings.video_transcoding_enabled):
+		return
+
+	for configured, names, label in (
+		(settings.ffmpeg_path, ("ffmpeg",), "ffmpeg"),
+		(settings.ffprobe_path, ("ffprobe",), "ffprobe"),
+		(settings.packager_path, PACKAGER_BINARY_NAMES, "Shaka Packager"),
+		(settings.docker_path, ("docker", "podman"), "Docker"),
+	):
+		if configured:
+			_resolve_binary(configured, names, label)
+
+
 def check_packager_available(settings=None) -> str:
 	"""Preflight the packager and return a human-readable description of it.
 
@@ -168,7 +200,7 @@ def check_packager_available(settings=None) -> str:
 	launcher, _ = packager_launcher(tmp_root_for_probe(), settings)
 
 	try:
-		_run([*launcher, "--version"], label="Shaka Packager")
+		_run([*launcher, "--version"], label="Shaka Packager", timeout=PREFLIGHT_TIMEOUT)
 	except VideoPipelineError as exc:
 		if (settings.video_packager_mode or "Docker") != "Binary":
 			raise VideoPipelineError(
@@ -182,6 +214,21 @@ def check_packager_available(settings=None) -> str:
 	return " ".join(launcher)
 
 
+def check_video_pipeline(settings=None) -> dict[str, str]:
+	"""Verify every executable needed before accepting a track import.
+
+	Unlike ``validate_video_processing_settings``, this does run the configured
+	packager. It catches a stopped Docker daemon or an unavailable image before
+	an author gets a Pending row that is guaranteed to fail in the worker.
+	"""
+	settings = settings or get_video_settings()
+	return {
+		"ffmpeg": ffmpeg_binary(settings),
+		"ffprobe": ffprobe_binary(settings),
+		"packager": check_packager_available(settings),
+	}
+
+
 def tmp_root_for_probe() -> str:
 	"""A real, existing directory to bind mount for the --version check."""
 	root = paths.tmp_root()
@@ -189,7 +236,12 @@ def tmp_root_for_probe() -> str:
 	return root
 
 
-def _run(command: list[str], cwd: str | None = None, label: str = "command") -> subprocess.CompletedProcess:
+def _run(
+	command: list[str],
+	cwd: str | None = None,
+	label: str = "command",
+	timeout: int = SUBPROCESS_TIMEOUT,
+) -> subprocess.CompletedProcess:
 	"""Run a subprocess, or raise with the tail of its stderr.
 
 	stdin is closed: ffmpeg prompts on stdin when an output file exists, and a
@@ -202,10 +254,12 @@ def _run(command: list[str], cwd: str | None = None, label: str = "command") -> 
 			stdin=subprocess.DEVNULL,
 			capture_output=True,
 			text=True,
-			timeout=SUBPROCESS_TIMEOUT,
+			timeout=timeout,
 		)
 	except subprocess.TimeoutExpired:
-		raise VideoPipelineError(frappe._("{0} timed out after {1} hours.").format(label, SUBPROCESS_TIMEOUT // 3600))
+		raise VideoPipelineError(
+			frappe._("{0} did not respond within {1} seconds.").format(label, timeout)
+		)
 	except OSError as exc:
 		raise VideoPipelineError(frappe._("Could not run {0}: {1}").format(label, exc))
 
@@ -374,21 +428,84 @@ def build_packager_command(
 	default_index = next((i for i, audio in enumerate(audios) if audio.is_default), 0)
 
 	for index, (name, audio) in enumerate(zip(audio_names, audios, strict=True)):
-		folder = audio_segment_dir(audio)
-		descriptor = (
-			f"in={name},stream=audio,"
-			f"init_segment={folder}/init.mp4,"
-			f"segment_template={folder}/$Number$.m4s,"
-			f"lang={audio.manifest_lang}"
+		command.append(
+			audio_descriptor(
+				name,
+				audio_segment_dir(audio),
+				audio.manifest_lang,
+				is_main=index == default_index,
+			)
 		)
-		if index == default_index:
-			descriptor += ",roles=main"
-		command.append(descriptor)
 
 	command += [
 		"--segment_duration", str(segment_duration),
 		"--generate_static_live_mpd",
 		"--mpd_output", paths.MANIFEST_NAME,
+	]
+	return command
+
+
+def audio_descriptor(name: str, folder: str, lang: str, is_main: bool = False) -> str:
+	"""One `in=...,stream=audio,...` argument for the packager."""
+	descriptor = (
+		f"in={name},stream=audio,"
+		f"init_segment={folder}/init.mp4,"
+		f"segment_template={folder}/$Number$.m4s,"
+		f"lang={lang}"
+	)
+	if is_main:
+		descriptor += ",roles=main"
+	return descriptor
+
+
+def build_audio_import_command(
+	source: str,
+	audio: probe.AudioStream,
+	reason: str,
+	align_to: float | None = None,
+	ffmpeg: str = "ffmpeg",
+) -> tuple[list[str], str]:
+	"""ffmpeg invocation producing one mp4 for a track added to an existing video.
+
+	The audio half of `build_normalize_command`, for the case where the video is
+	already packaged and only a new narration has to be prepared.
+
+	Returns (argv, filename).
+	"""
+	name = "track.mp4"
+	command = [ffmpeg, "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1", "-i", source]
+
+	# Map by absolute stream index, as the multi-output builder does: the file a
+	# translator sends back is often a full video whose audio is not stream 1.
+	command += ["-map", f"0:{audio.index}"]
+	command += probe.build_audio_args(audio, reason)
+
+	if align_to:
+		command += probe.build_audio_align_args(align_to)
+
+	command += ["-vn", "-sn", "-dn", "-movflags", "+faststart", name]
+	return command, name
+
+
+def build_audio_packager_command(
+	name: str,
+	segment_dir: str,
+	lang: str,
+	segment_duration: float,
+	launcher: list[str] | None = None,
+) -> list[str]:
+	"""Package a single audio track into its own folder and throwaway manifest.
+
+	No `roles=main`: the manifest this is merged into already nominates a default
+	track, and a second one makes the player's choice arbitrary again. The
+	manifest written here exists only to be read for its one AdaptationSet.
+	"""
+	command = list(launcher or ["packager"])
+	command.append(audio_descriptor(name, segment_dir, lang))
+	command += [
+		"--segment_duration", str(segment_duration),
+		"--generate_static_live_mpd",
+		"--mpd_output", paths.TRACK_MANIFEST_NAME,
 	]
 	return command
 
@@ -467,7 +584,9 @@ def absolute_file_path(file_url: str) -> str:
 	return target
 
 
-def _run_ffmpeg_with_progress(command: list[str], cwd: str, doc, total_duration: float):
+def _run_ffmpeg_with_progress(
+	command: list[str], cwd: str, doc, total_duration: float, on_progress=None
+):
 	"""Run the encode, republishing progress as it goes.
 
 	`-progress pipe:1` makes ffmpeg emit `key=value` blocks on stdout; `out_time_us`
@@ -475,6 +594,10 @@ def _run_ffmpeg_with_progress(command: list[str], cwd: str, doc, total_duration:
 	a real percentage rather than a spinner. Publishing is throttled — a two-hour
 	encode would otherwise emit thousands of socket events that every viewer in
 	the website room receives.
+
+	`on_progress` overrides where those percentages go. Importing one audio track
+	into a package that is already live must not announce itself as the whole
+	video re-packaging, or every learner's player drops back to the fallback file.
 	"""
 	# stderr goes to a file rather than a second pipe. Draining only stdout while
 	# stderr fills its 64 KB pipe buffer would deadlock: ffmpeg blocks writing a
@@ -510,7 +633,7 @@ def _run_ffmpeg_with_progress(command: list[str], cwd: str, doc, total_duration:
 			last_published = now
 
 			percent = min(99, int(seconds / total_duration * 100)) if total_duration > 0 else 0
-			publish_progress(doc, percent)
+			(on_progress or publish_progress)(doc, percent)
 
 		process.wait(timeout=SUBPROCESS_TIMEOUT)
 
@@ -691,6 +814,30 @@ def _remove_quietly(path: str):
 
 def _write_result(doc, info: probe.MediaInfo, is_private: bool, manifest_langs: dict[str, str]):
 	"""Record the finished package and hand the player its track list."""
+	# Tracks imported after the original upload are not in the source file, so
+	# rebuilding the list from the probe alone would delete a translation that
+	# may have taken weeks to produce. Keep them, and re-import them from the
+	# files they came from once this package is in place.
+	readded = [
+		{
+			"origin": "Added",
+			"status": "Pending",
+			"source_file_url": row.source_file_url,
+			"source_stream_index": row.source_stream_index,
+			"track_index": row.track_index,
+			"segment_dir": row.segment_dir,
+			"manifest_lang": row.manifest_lang,
+			"detected_language": row.detected_language,
+			"language": row.language,
+			"label": row.label,
+			"codec": row.codec,
+			"channels": row.channels,
+			"is_default": 0,
+		}
+		for row in doc.audio_tracks
+		if row.origin == "Added" and row.source_file_url
+	]
+
 	doc.set("audio_tracks", [])
 	for position, audio in enumerate(info.audios, start=1):
 		segment_dir = audio_segment_dir(audio)
@@ -713,12 +860,18 @@ def _write_result(doc, info: probe.MediaInfo, is_private: bool, manifest_langs: 
 				"codec": audio.codec_name,
 				"channels": audio.channels,
 				"is_default": audio.is_default,
+				"origin": "Source File",
+				"status": "Ready",
 			},
 		)
 
+	_reappend_added_tracks(doc, readded)
+
 	doc.manifest_url = paths.manifest_url(doc.video_id, is_private=is_private)
 	doc.poster_url = paths.poster_url(doc.video_id, is_private=is_private)
-	doc.duration = info.duration
+	# The picture's length, not the container's — see `playable_duration`. This
+	# is what added tracks are aligned to and validated against.
+	doc.duration = info.playable_duration
 	doc.width = info.video.width
 	doc.height = info.video.height
 	doc.status = "Ready"
@@ -729,6 +882,51 @@ def _write_result(doc, info: probe.MediaInfo, is_private: bool, manifest_langs: 
 	from lms.lms.doctype.lms_video.lms_video import publish_video_status
 
 	publish_video_status(doc)
+
+	if any(row.origin == "Added" for row in doc.audio_tracks):
+		from lms.lms.video.audio_tracks import enqueue_track_operations
+
+		enqueue_track_operations(doc.name)
+
+
+def _reappend_added_tracks(doc, readded: list[dict]):
+	"""Re-queue tracks that were imported after the original upload.
+
+	The language codes they held belonged to the *previous* package. This one
+	assigned its source-file tracks from scratch, so a code that was free before
+	may not be now — re-reserve against what this package actually claimed
+	rather than trusting the old value.
+
+	A source file that has since been deleted leaves the row visible and Failed
+	rather than vanishing, so the loss is something an author can see and act on.
+	"""
+	used = {row.manifest_lang for row in doc.audio_tracks if row.manifest_lang}
+
+	for track in readded:
+		# Reserved even for a track that cannot be rebuilt: its row survives, and
+		# two rows sharing a manifest_lang would make every lookup keyed on that
+		# code — the editor's, the player's label join — resolve to the wrong one.
+		code = probe.assign_manifest_lang("", used)
+		used.add(code)
+		track["manifest_lang"] = code
+		track["segment_dir"] = f"{paths.AUDIO_STREAM_DIR_PREFIX}{code}"
+
+		if not absolute_file_path_exists(track["source_file_url"]):
+			track["status"] = "Failed"
+			track["error_log"] = frappe._(
+				"The file this track was imported from is no longer on disk, so it could not be "
+				"rebuilt when the video was repackaged. Add the track again from a new upload."
+			)
+
+		doc.append("audio_tracks", track)
+
+
+def absolute_file_path_exists(file_url: str) -> bool:
+	try:
+		absolute_file_path(file_url)
+	except Exception:
+		return False
+	return True
 
 
 def enqueue_packaging(video: str, now: bool = False):

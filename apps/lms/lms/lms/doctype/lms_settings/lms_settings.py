@@ -13,6 +13,13 @@ class LMSSettings(Document):
 		self.validate_signup()
 		self.validate_contact_us_details()
 		self.validate_lesson_dwell_time()
+		self.validate_video_processing_settings()
+
+	def validate_video_processing_settings(self):
+		"""Reject unusable configured paths before they reach an upload worker."""
+		from lms.lms.video import pipeline
+
+		pipeline.validate_video_processing_settings(self)
 
 	def validate_lesson_dwell_time(self):
 		if cint(self.lesson_dwell_time) < 1:

@@ -17,7 +17,14 @@
   "channels",
   "column_break_media",
   "is_default",
-  "detected_language"
+  "detected_language",
+  "section_break_origin",
+  "origin",
+  "status",
+  "column_break_origin",
+  "source_file_url",
+  "source_stream_index",
+  "error_log"
  ],
  "fields": [
   {
@@ -92,6 +99,54 @@
    "fieldname": "detected_language",
    "fieldtype": "Data",
    "label": "Detected Language",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_origin",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "Source File",
+   "description": "Whether this track came out of the original upload or was imported separately afterwards. Added tracks are re-imported from their source file if the video is ever fully repackaged.",
+   "fieldname": "origin",
+   "fieldtype": "Select",
+   "label": "Origin",
+   "options": "Source File\nAdded",
+   "read_only": 1
+  },
+  {
+   "default": "Ready",
+   "description": "Lifecycle of this track alone. The parent video stays Ready while a newly added track is still being packaged, so learners keep playing throughout.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Pending\nProcessing\nReady\nFailed\nRemoving",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_origin",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "The uploaded File this track was imported from. Only set for added tracks.",
+   "fieldname": "source_file_url",
+   "fieldtype": "Data",
+   "label": "Source File URL",
+   "read_only": 1
+  },
+  {
+   "description": "Which audio stream of the source file was imported. 0 for an audio-only upload.",
+   "fieldname": "source_stream_index",
+   "fieldtype": "Int",
+   "label": "Source Stream Index",
+   "read_only": 1
+  },
+  {
+   "description": "Why importing this track failed. Shown to the author in the lesson editor.",
+   "fieldname": "error_log",
+   "fieldtype": "Small Text",
+   "label": "Error Log",
    "read_only": 1
   }
  ],

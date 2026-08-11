@@ -121,11 +121,13 @@ def backfill_lesson_videos(limit: int = None, lesson: str = None, include_failed
 def sweep_stale_packaging():
 	"""Daily cleanup of work abandoned by a crashed or killed worker.
 
-	Two kinds of debris: docs that still claim to be mid-encode, and staging
-	folders whose job never reached its `finally`. Both are invisible to users
-	but the folders hold a full copy of every video that was being processed.
+	Three kinds of debris: docs that still claim to be mid-encode, audio-track
+	imports whose worker died, and staging folders whose job never reached its
+	`finally`. Both kinds of folder hold a full copy of what was being processed.
 	"""
 	_fail_stuck_videos()
+	_fail_stuck_tracks()
+	_requeue_pending_tracks()
 	_remove_stale_staging()
 
 
@@ -154,19 +156,92 @@ def _fail_stuck_videos():
 		frappe.db.commit()
 
 
+def _fail_stuck_tracks():
+	"""Audio-track imports whose worker never came back.
+
+	The parent video is fine — it kept playing throughout — so only the row is
+	marked, and the author can retry it from the editor.
+	"""
+	cutoff = add_to_date(now_datetime(), hours=-STALE_JOB_HOURS)
+	stuck = frappe.get_all(
+		"LMS Video Audio Track",
+		filters={"parenttype": "LMS Video", "status": "Processing", "modified": ["<", cutoff]},
+		pluck="name",
+	)
+	for name in stuck:
+		frappe.db.set_value(
+			"LMS Video Audio Track",
+			name,
+			{
+				"status": "Failed",
+				"error_log": frappe._(
+					"Importing this audio track did not finish. The worker handling it stopped "
+					"before completing. Retry it from the lesson editor."
+				),
+			},
+			update_modified=False,
+		)
+		frappe.logger("lms").warning(f"Marked stale LMS Video Audio Track {name} as Failed")
+
+	if stuck:
+		frappe.db.commit()
+
+
+def _requeue_pending_tracks():
+	"""Re-queue track operations that were never picked up.
+
+	`enqueue_track_operations` deduplicates on one job per video, so a row
+	committed in the moment between a running job's last look and its exit ends
+	up queued with nothing to run it. Cheap to re-enqueue: the job no-ops when
+	there is nothing pending.
+	"""
+	from lms.lms.video.audio_tracks import QUEUED_STATUSES, enqueue_track_operations
+
+	waiting = frappe.get_all(
+		"LMS Video Audio Track",
+		filters={"parenttype": "LMS Video", "status": ["in", QUEUED_STATUSES]},
+		pluck="parent",
+	)
+	for video in set(waiting):
+		enqueue_track_operations(video)
+
+
 def _remove_stale_staging():
-	root = paths.tmp_root()
+	for root, depth in ((paths.tmp_root(), 1), (paths.track_tmp_root(), 2)):
+		_remove_stale_folders(root, depth)
+
+
+def _remove_stale_folders(root: str, depth: int):
+	"""Delete staging folders `depth` levels under `root` that outlived their job.
+
+	Track staging nests one level deeper than packaging staging
+	(`tracks/<video_id>/<operation>/`), and the intermediate directory's own
+	mtime says nothing about whether the imports inside it are still running.
+	"""
 	if not os.path.isdir(root):
 		return
 
 	cutoff = time.time() - STALE_STAGING_HOURS * 3600
 	for entry in os.listdir(root):
+		# Track staging lives inside packaging staging but is swept separately,
+		# at its own depth. Its own mtime is meaningless — it is old the moment
+		# the first import finishes, while imports underneath may be running.
+		if entry == paths.TRACK_TMP_DIRNAME:
+			continue
+
 		folder = os.path.join(root, entry)
+		if not os.path.isdir(folder):
+			continue
+
+		if depth > 1:
+			_remove_stale_folders(folder, depth - 1)
+			continue
+
 		try:
-			if not os.path.isdir(folder) or os.path.getmtime(folder) > cutoff:
+			if os.path.getmtime(folder) > cutoff:
 				continue
 		except OSError:
 			continue
 
 		shutil.rmtree(folder, ignore_errors=True)
-		frappe.logger("lms").info(f"Removed stale video staging folder {entry}")
+		frappe.logger("lms").info(f"Removed stale video staging folder {folder}")

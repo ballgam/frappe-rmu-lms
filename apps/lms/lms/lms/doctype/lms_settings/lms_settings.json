@@ -623,21 +623,21 @@
 		},
 		{
 			"default": "google/shaka-packager:latest",
-			"depends_on": "eval:doc.video_transcoding_enabled",
+			"depends_on": "eval:doc.video_transcoding_enabled && doc.video_packager_mode == 'Docker'",
 			"description": "Pull it before first use: docker pull google/shaka-packager",
 			"fieldname": "video_packager_image",
 			"fieldtype": "Data",
 			"label": "Packager Docker Image"
 		},
 		{
-			"depends_on": "eval:doc.video_transcoding_enabled",
+			"depends_on": "eval:doc.video_transcoding_enabled && doc.video_packager_mode == 'Binary'",
 			"description": "Full path to the packager executable. Only used in Binary mode; leave empty to find it on PATH.",
 			"fieldname": "packager_path",
 			"fieldtype": "Data",
 			"label": "Shaka Packager Path"
 		},
 		{
-			"depends_on": "eval:doc.video_transcoding_enabled",
+			"depends_on": "eval:doc.video_transcoding_enabled && doc.video_packager_mode == 'Docker'",
 			"description": "Full path to the docker (or podman) executable. Leave empty to find it on PATH.",
 			"fieldname": "docker_path",
 			"fieldtype": "Data",

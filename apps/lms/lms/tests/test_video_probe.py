@@ -102,6 +102,40 @@ class TestParseProbe(unittest.TestCase):
 		self.assertFalse(info.has_video)
 		self.assertTrue(info.has_audio)
 
+	def test_playable_duration_is_the_pictures_not_the_containers(self):
+		"""A dub that overruns the picture makes the container longer than the
+		video. Storing that leaves added tracks padded past the last segment,
+		and the mismatched-upload guard measuring against nothing real."""
+		data = {"format": {"duration": "156.386"}, "streams": [
+			{"index": 0, "codec_type": "video", "codec_name": "h264", "duration": "118.866"},
+			{"index": 1, "codec_type": "audio", "codec_name": "aac", "channels": 2, "duration": "118.912"},
+			{"index": 2, "codec_type": "audio", "codec_name": "aac", "channels": 2, "duration": "156.386"},
+		]}
+		info = probe.parse_probe(data)
+
+		self.assertAlmostEqual(info.duration, 156.386, places=3)
+		self.assertAlmostEqual(info.video.duration, 118.866, places=3)
+		self.assertAlmostEqual(info.playable_duration, 118.866, places=3)
+
+	def test_playable_duration_falls_back_when_no_stream_duration(self):
+		"""Some muxers write only a container duration."""
+		data = {"format": {"duration": "42.5"}, "streams": [
+			{"index": 0, "codec_type": "video", "codec_name": "h264"},
+		]}
+		info = probe.parse_probe(data)
+
+		self.assertEqual(info.video.duration, 0.0)
+		self.assertAlmostEqual(info.playable_duration, 42.5, places=3)
+
+	def test_playable_duration_of_an_audio_only_file_is_the_containers(self):
+		data = {"format": {"duration": "118.9"}, "streams": [
+			{"index": 0, "codec_type": "audio", "codec_name": "mp3", "channels": 2, "duration": "118.9"},
+		]}
+		info = probe.parse_probe(data)
+
+		self.assertFalse(info.has_video)
+		self.assertAlmostEqual(info.playable_duration, 118.9, places=3)
+
 	def test_rotation_from_display_matrix_is_clockwise(self):
 		data = {"format": {}, "streams": [{
 			"index": 0, "codec_type": "video", "codec_name": "h264",
@@ -177,6 +211,69 @@ class TestManifestLanguages(unittest.TestCase):
 		self.assertEqual(probe.default_track_label(_audio(title="Somali dub"), 1), "Somali dub")
 		self.assertEqual(probe.default_track_label(_audio(detected_language="som"), 2), "SOM")
 		self.assertEqual(probe.default_track_label(_audio(detected_language="und"), 2), "Audio 2")
+
+
+class TestReservingOneLanguage(unittest.TestCase):
+	"""`assign_manifest_lang` reserves a code for a track added to a package that
+	already exists, months after the original upload."""
+
+	def test_an_unused_real_code_is_kept(self):
+		self.assertEqual(probe.assign_manifest_lang("swa", {"eng", "som"}), "swa")
+
+	def test_a_taken_code_falls_through_to_private_use(self):
+		self.assertEqual(probe.assign_manifest_lang("eng", {"eng"}), "qaa")
+
+	def test_an_empty_request_always_gets_a_private_use_code(self):
+		"""Added tracks ask for nothing, because the packager rewrites real codes
+		on their way into the MPD (`fra` becomes `fr`) and a code that collides
+		after that rewrite would merge two tracks into one menu entry."""
+		self.assertEqual(probe.assign_manifest_lang("", set()), "qaa")
+
+	def test_it_skips_every_code_already_in_the_manifest(self):
+		self.assertEqual(probe.assign_manifest_lang("", {"qaa", "qab", "qad"}), "qac")
+
+	def test_it_matches_the_bulk_assignment_it_was_extracted_from(self):
+		audios = [_audio(detected_language="eng"), _audio(detected_language="und")]
+		probe.assign_manifest_langs(audios)
+
+		used = set()
+		one_by_one = []
+		for audio in audios:
+			code = probe.assign_manifest_lang(audio.detected_language, used)
+			used.add(code)
+			one_by_one.append(code)
+
+		self.assertEqual([a.manifest_lang for a in audios], one_by_one)
+
+
+class TestImportedTrackDuration(unittest.TestCase):
+	"""A track added to an existing package has to run the length of the video it
+	joins, or the manifest's duration stops describing it."""
+
+	def test_tolerance_is_proportional_with_a_floor(self):
+		self.assertEqual(probe.duration_tolerance(60), 5.0)
+		self.assertEqual(probe.duration_tolerance(7200), 144.0)
+
+	def test_a_close_enough_file_is_accepted(self):
+		self.assertEqual(probe.duration_mismatch_reason(7201.2, 7200), "")
+
+	def test_a_wildly_wrong_file_is_rejected_with_both_durations(self):
+		reason = probe.duration_mismatch_reason(2400, 5400)
+		self.assertIn("2400.0s", reason)
+		self.assertIn("5400.0s", reason)
+
+	def test_a_file_with_no_duration_is_rejected(self):
+		self.assertIn("no duration", probe.duration_mismatch_reason(0, 5400))
+
+	def test_sub_second_drift_needs_no_alignment(self):
+		self.assertFalse(probe.needs_duration_alignment(7200.1, 7200))
+
+	def test_a_second_of_drift_is_aligned(self):
+		self.assertTrue(probe.needs_duration_alignment(7201.2, 7200))
+
+	def test_alignment_pads_and_cuts_to_the_exact_length(self):
+		"""apad alone runs forever; it is -t that ends the output."""
+		self.assertEqual(probe.build_audio_align_args(7200), ["-af", "apad", "-t", "7200.000"])
 
 
 class TestEncodeDecisions(unittest.TestCase):

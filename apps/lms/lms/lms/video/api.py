@@ -150,11 +150,29 @@ def _verify_token(video_id: str, token: str):
 		raise frappe.PermissionError(_("Playback token is not valid: {0}").format(exc))
 
 
-def _audio_tracks_for(video_name: str) -> list[dict]:
+TRACK_FIELDS = [
+	"name",
+	"manifest_lang",
+	"segment_dir",
+	"language",
+	"label",
+	"is_default",
+	"channels",
+	"codec",
+	"track_index",
+	"origin",
+	"status",
+	"source_file_url",
+	"error_log",
+]
+
+
+def _audio_track_rows(video_name: str) -> list[dict]:
+	"""Every audio track row, whatever state it is in. Authoring view."""
 	rows = frappe.get_all(
 		"LMS Video Audio Track",
 		filters={"parent": video_name, "parenttype": "LMS Video"},
-		fields=["manifest_lang", "language", "label", "is_default", "channels", "track_index"],
+		fields=TRACK_FIELDS,
 		order_by="idx asc",
 	)
 	return [
@@ -166,9 +184,25 @@ def _audio_tracks_for(video_name: str) -> list[dict]:
 			"label": row.label or row.manifest_lang,
 			"is_default": bool(row.is_default),
 			"channels": row.channels,
+			"codec": row.codec or "",
+			# Rows predating the added-track feature carry no status; they are all
+			# fully packaged tracks from the original upload.
+			"status": row.status or "Ready",
+			"origin": row.origin or "Source File",
+			"error": row.error_log or None,
 		}
 		for row in rows
 	]
+
+
+def _audio_tracks_for(video_name: str) -> list[dict]:
+	"""The tracks a learner may be offered.
+
+	Filtered to the ones that are actually in the manifest: a track still being
+	imported has no segments on disk yet, so offering it would put a dead entry
+	in the audio menu.
+	"""
+	return [track for track in _audio_track_rows(video_name) if track["status"] == "Ready"]
 
 
 @frappe.whitelist(allow_guest=True)
@@ -364,6 +398,25 @@ def serve_video_segment(video_id: str, path: str, t: str = None):
 
 
 @frappe.whitelist()
+def list_audio_tracks(video_id: str) -> dict:
+	"""The authoring view of a video's tracks, including ones still importing.
+
+	`get_playback_info` deliberately hides everything that is not `Ready`, since
+	it feeds the learner's audio menu. The editor needs exactly what that hides:
+	which tracks are queued, how far along they are, and why one failed.
+	"""
+	doc = _get_video(video_id)
+	_assert_can_edit(doc)
+
+	return {
+		"video_id": doc.video_id,
+		"status": doc.status,
+		"duration": doc.duration,
+		"audio_tracks": _audio_track_rows(doc.name),
+	}
+
+
+@frappe.whitelist()
 def update_audio_tracks(video_id: str, tracks) -> dict:
 	"""Rename / re-language the audio tracks an instructor sees in the menu.
 
@@ -389,4 +442,6 @@ def update_audio_tracks(video_id: str, tracks) -> dict:
 		row.is_default = cint(update.get("is_default"))
 
 	doc.save(ignore_permissions=True)
-	return {"audio_tracks": _audio_tracks_for(doc.name)}
+	# The authoring view, since this is only ever called from the editor — a
+	# track still importing has to keep its row in the list it was renamed in.
+	return {"audio_tracks": _audio_track_rows(doc.name)}
