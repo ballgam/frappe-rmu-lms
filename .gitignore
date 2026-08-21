@@ -19,3 +19,6 @@ sites/*/site_config.json
 sites/common_site_config.json
 sites/*/touched_tables.json
 sites/*/.test_log
+sites/*/locks/
+sites/*/private/scorm/
+sites/*/private/backups/
