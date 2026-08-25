@@ -1,0 +1,41 @@
+# A second consumer of the `long` queue, so a video encode cannot head-of-line
+# block the rest of it.
+#
+# `long` is shared. Besides the two video jobs it carries:
+#
+#   lms/sqlite.py:213                        search index rebuild
+#   lms/lms/course_import_export.py:304      course import/export
+#   .../course_lesson/course_lesson.py:66    progress recalculation
+#
+# A 40-minute lecture occupies a worker for minutes. With only the stock
+# `queue-long`, everything above waits behind it. Both video jobs deduplicate on
+# the video id (`job_id=lms-package-video::<id>` / `lms-audio-tracks::<id>`), so
+# a second consumer cannot double-encode the same video.
+#
+# Note this is a second *consumer*, not an isolated queue: both jobs hard-code
+# queue="long" in pipeline.py:935 and audio_tracks.py:287. Truly isolating video
+# onto its own queue needs a code change - out of scope for the pilot.
+#
+# Anchors do not cross compose files, so this repeats the fields that
+# x-backend-defaults supplies upstream.
+#
+# Usage: append to the render command in deploy/README.md.
+
+services:
+  queue-video:
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    platform: linux/amd64
+    command: bench worker --queue long
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          # Leave headroom for gunicorn on a 4-vCPU box. ffmpeg will happily
+          # take every core it is given and starve the web workers.
+          cpus: "2"

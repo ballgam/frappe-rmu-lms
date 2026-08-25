@@ -33,6 +33,10 @@ indent = "\t"
 packages = [
     "libxml2-dev",
     "libxslt1-dev",
+    # ffmpeg/ffprobe drive the video packaging pipeline in lms/lms/video/.
+    # Shaka Packager has no apt package; it is installed as a static binary by
+    # the deployment image (see deploy/README.md).
+    "ffmpeg",
 ]
 
 [tool.ruff]
