@@ -1,0 +1,249 @@
+name: rmu-lms
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+x-image: &application-image
+  image: ${LMS_IMAGE:?Set LMS_IMAGE to a private GHCR release tag or digest}
+  # Deployments pull explicitly before upgrades; backups must still run if GHCR is unavailable.
+  pull_policy: ${PULL_POLICY:-missing}
+  init: true
+  restart: unless-stopped
+  logging: *default-logging
+  security_opt:
+    - no-new-privileges:true
+
+x-configured-application: &configured-application
+  <<: *application-image
+  depends_on:
+    configurator:
+      condition: service_completed_successfully
+  volumes:
+    - sites:/home/frappe/frappe-bench/sites
+
+services:
+  configurator:
+    <<: *application-image
+    restart: on-failure:5
+    entrypoint:
+      - /bin/bash
+      - -euc
+    command:
+      - |
+        ls -1 apps > sites/apps.txt
+        bench set-config -g db_host "$${DB_HOST}"
+        bench set-config -gp db_port "$${DB_PORT}"
+        bench set-config -g redis_cache "redis://$${REDIS_CACHE}"
+        bench set-config -g redis_queue "redis://$${REDIS_QUEUE}"
+        bench set-config -g redis_socketio "redis://$${REDIS_QUEUE}"
+        bench set-config -gp socketio_port "$${SOCKETIO_PORT}"
+        bench set-config -g chromium_path /usr/bin/chromium
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis-cache:6379
+      REDIS_QUEUE: redis-queue:6379
+      SOCKETIO_PORT: "9000"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    cpus: "0.50"
+    mem_limit: 512m
+
+  backend:
+    <<: *configured-application
+    environment:
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-180}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--header", "Host: ${SITE_NAME}", "http://127.0.0.1:8000/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    cpus: "4.0"
+    mem_limit: 8g
+
+  frontend:
+    <<: *application-image
+    command: ["/usr/local/bin/nginx-entrypoint.sh"]
+    environment:
+      BACKEND: backend:8000
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:?Set SITE_NAME to the production DNS name}
+      UPSTREAM_REAL_IP_ADDRESS: ${UPSTREAM_REAL_IP_ADDRESS:-172.16.0.0/12}
+      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
+      UPSTREAM_REAL_IP_RECURSIVE: "on"
+      PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT:-660s}
+      CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-2g}
+    ports:
+      - "${FRONTEND_BIND:-127.0.0.1:8080}:8080"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+    depends_on:
+      backend:
+        condition: service_healthy
+      websocket:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--header", "Host: ${SITE_NAME}", "http://127.0.0.1:8080/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    cpus: "1.0"
+    mem_limit: 1g
+
+  websocket:
+    <<: *configured-application
+    command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'frappe/socketio.js' >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    cpus: "1.0"
+    mem_limit: 1g
+
+  queue-short:
+    <<: *configured-application
+    command: ["bench", "worker", "--queue", "short,default"]
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'bench worker.*short,default' >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    cpus: "2.0"
+    mem_limit: 2g
+
+  queue-long:
+    <<: *configured-application
+    command: ["bench", "worker-pool", "--queue", "long", "--num-workers", "2"]
+    stop_grace_period: 6h
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'bench worker-pool.*long' >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    cpus: "8.0"
+    mem_limit: 12g
+
+  scheduler:
+    <<: *configured-application
+    command: ["bench", "schedule"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'bench schedule' >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    cpus: "1.0"
+    mem_limit: 768m
+
+  db:
+    image: mariadb:10.11@sha256:7f22313fc130a377a44999965bcb0a08dd5b21e8502824c1b864f792f9bc66ab
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --max-allowed-packet=256M
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_AUTO_UPGRADE: "1"
+    secrets:
+      - db_root_password
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    cpus: "3.0"
+    mem_limit: 4g
+
+  redis-cache:
+    image: redis:7.2-alpine@sha256:26f9c92117b446e9baee4e4a6e455a4a59a2b50138eef3da4dd32919d4252d0d
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    cpus: "0.50"
+    mem_limit: 512m
+
+  redis-queue:
+    image: redis:7.2-alpine@sha256:26f9c92117b446e9baee4e4a6e455a4a59a2b50138eef3da4dd32919d4252d0d
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    cpus: "0.50"
+    mem_limit: 512m
+
+  backup:
+    <<: *application-image
+    profiles: ["backup"]
+    restart: "no"
+    entrypoint: ["/usr/local/sbin/rmu-lms-backup"]
+    environment:
+      SITE_NAME: ${SITE_NAME:?Set SITE_NAME to the production DNS name}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/backup/restic}
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      BACKUP_TAG: ${BACKUP_TAG:-rmu-lms}
+      LMS_IMAGE: ${LMS_IMAGE}
+    secrets:
+      - restic_password
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - type: bind
+        source: ${BACKUP_MOUNT:?Set BACKUP_MOUNT to the mounted remote filesystem}
+        target: /backup
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    cpus: "2.0"
+    mem_limit: 2g
+
+secrets:
+  db_root_password:
+    file: ${DB_ROOT_PASSWORD_FILE:?Set DB_ROOT_PASSWORD_FILE to a root-readable secret file}
+  restic_password:
+    file: ${RESTIC_PASSWORD_FILE:?Set RESTIC_PASSWORD_FILE to a root-readable secret file}
+
+volumes:
+  sites:
+  db-data:
+  redis-queue-data:

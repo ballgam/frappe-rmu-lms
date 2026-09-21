@@ -1,0 +1,17 @@
+# Bootstrap virtual host used before Certbot has issued a certificate.
+# Replace LMS_DOMAIN before enabling this file.
+<VirtualHost *:80>
+    ServerName LMS_DOMAIN
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyAddHeaders On
+
+    RequestHeader set X-Forwarded-Proto "http"
+    ProxyPass        / http://127.0.0.1:8080/ connectiontimeout=5 timeout=660
+    ProxyPassReverse / http://127.0.0.1:8080/
+
+    ErrorLog ${APACHE_LOG_DIR}/rmu-lms-error.log
+    CustomLog ${APACHE_LOG_DIR}/rmu-lms-access.log combined
+</VirtualHost>
+

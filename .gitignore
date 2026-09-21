@@ -22,3 +22,7 @@ sites/*/.test_log
 sites/*/locks/
 sites/*/private/scorm/
 sites/*/private/backups/
+
+# Production deployment secrets and local operator configuration
+deployment/.env
+deployment/secrets/

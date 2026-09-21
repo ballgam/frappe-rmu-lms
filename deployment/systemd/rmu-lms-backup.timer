@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly RMU LMS backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=rmu-lms-backup.service
+
+[Install]
+WantedBy=timers.target

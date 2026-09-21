@@ -1,0 +1,19 @@
+[Unit]
+Description=Encrypted RMU LMS backup to remote filesystem
+Documentation=file:/opt/rmu-lms/deployment/README.md
+After=docker.service network-online.target remote-fs.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/rmu-lms/deployment
+ExecStart=/opt/rmu-lms/deployment/scripts/backup-host.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStartSec=12h
