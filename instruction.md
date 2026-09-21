@@ -4,9 +4,10 @@ This is the short, ordered installation path for a fresh Ubuntu 24.04 x86_64 ser
 
 Before starting:
 
-- Point the production DNS name at the server.
+- Know the production hostname that the externally managed proxy will publish.
 - Publish a GitHub Release and copy the image digest from the workflow summary.
 - Configure the remote backup filesystem in `/etc/fstab`.
+- Arrange HTTPS and reverse-proxy configuration separately; this guide does not change Apache.
 - Replace the example values below.
 
 ## 1. Set deployment values
@@ -15,17 +16,16 @@ Run these commands on the server as your normal sudo-enabled user:
 
 ```bash
 export LMS_DOMAIN=learning.example.org
-export CERTBOT_EMAIL=admin@example.org
 export GHCR_USER=GITHUB_MACHINE_USER
 export IMAGE_DIGEST=sha256:REPLACE_WITH_RELEASE_DIGEST
 export BACKUP_MOUNT=/mnt/rmu-lms-backups
 ```
 
-## 2. Install Docker, Apache, and host tools
+## 2. Install Docker and host tools
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl git openssl snapd
+sudo apt-get install -y ca-certificates curl git openssl
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
@@ -38,13 +38,9 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 sudo apt-get update
 sudo apt-get install -y \
   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-  apache2 jq util-linux ufw
+  jq util-linux
 
-sudo systemctl enable --now docker apache2
-sudo a2enmod headers proxy proxy_http rewrite ssl
-sudo ufw allow OpenSSH
-sudo ufw allow 'Apache Full'
-sudo ufw --force enable
+sudo systemctl enable --now docker
 
 sudo docker version
 sudo docker compose version
@@ -152,36 +148,9 @@ curl --fail --header "Host: $SITE_NAME" \
   http://127.0.0.1:8080/api/method/ping
 ```
 
-## 7. Enable Apache and HTTPS
+The external HTTPS/reverse-proxy configuration must send traffic to `127.0.0.1:8080`, preserve the original `Host`, set `X-Forwarded-Proto: https`, support WebSocket upgrades on `/socket.io/`, and allow 2 GB requests with long upload timeouts.
 
-```bash
-sed "s/LMS_DOMAIN/$SITE_NAME/g" apache/rmu-lms-http.conf.example | \
-  sudo tee /etc/apache2/sites-available/rmu-lms-http.conf >/dev/null
-sudo a2dissite 000-default.conf
-sudo a2ensite rmu-lms-http.conf
-sudo apachectl configtest
-sudo systemctl reload apache2
-
-sudo snap install --classic certbot
-sudo ln -sf /snap/bin/certbot /usr/local/bin/certbot
-sudo certbot certonly --apache \
-  -d "$SITE_NAME" \
-  --email "$CERTBOT_EMAIL" \
-  --agree-tos \
-  --no-eff-email
-
-sed "s/LMS_DOMAIN/$SITE_NAME/g" apache/rmu-lms-ssl.conf.example | \
-  sudo tee /etc/apache2/sites-available/rmu-lms.conf >/dev/null
-sudo a2dissite rmu-lms-http.conf
-sudo a2ensite rmu-lms.conf
-sudo apachectl configtest
-sudo systemctl reload apache2
-sudo certbot renew --dry-run
-
-curl --fail "https://$SITE_NAME/api/method/ping"
-```
-
-## 8. Initialize encrypted remote backups
+## 7. Initialize encrypted remote backups
 
 The mount command expects an `/etc/fstab` entry for `BACKUP_MOUNT`:
 
@@ -201,7 +170,7 @@ sudo systemctl enable --now rmu-lms-backup.timer
 sudo systemctl list-timers rmu-lms-backup.timer
 ```
 
-## 9. Final checks
+## 8. Final checks
 
 ```bash
 cd /opt/rmu-lms/deployment
@@ -209,12 +178,12 @@ sudo docker compose --env-file .env ps
 sudo docker compose --env-file .env exec backend \
   bench --site "$SITE_NAME" check-video-pipeline
 sudo docker compose --env-file .env logs --tail=100 queue-long scheduler
-sudo ss -lntp
+sudo ss -lntp | grep '127.0.0.1:8080'
 ```
 
-Externally reachable ports should be limited to `22`, `80`, and `443`. Complete the multi-audio upload, later-audio addition, progressive fallback, private-media access, and restart tests in the main runbook.
+Complete the multi-audio upload, later-audio addition, progressive fallback, private-media access, and restart tests in the main runbook.
 
-## 10. Deploy a later release
+## 9. Deploy a later release
 
 Set the new digest, back up, migrate once, and restart:
 
@@ -245,7 +214,8 @@ sudo docker compose --env-file .env exec backend \
 sudo docker compose --env-file .env exec backend \
   bench --site "$SITE_NAME" check-video-pipeline
 sudo docker compose --env-file .env ps
-curl --fail "https://$SITE_NAME/api/method/ping"
+curl --fail --header "Host: $SITE_NAME" \
+  http://127.0.0.1:8080/api/method/ping
 ```
 
 If migration fails, do not start the previous image against the migrated database. Follow the restore-based rollback in `deployment/README.md`.
