@@ -65,6 +65,9 @@ jobs:
       - name: Smoke-test the runtime image
         run: docker run --rm --entrypoint /usr/local/sbin/rmu-lms-smoke-image rmu-lms:smoke
 
+      - name: Create and verify a disposable LMS site
+        run: bash deployment/scripts/smoke-stack.sh rmu-lms:smoke
+
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:

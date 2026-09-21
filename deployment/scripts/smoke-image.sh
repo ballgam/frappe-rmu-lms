@@ -11,7 +11,11 @@ test -x /home/frappe/frappe-bench/env/bin/gunicorn
 test -f /home/frappe/frappe-bench/apps/lms/frontend/package.json
 test -f /home/frappe/frappe-bench/apps/lms/lms/www/_lms.html
 test -d /home/frappe/frappe-bench/assets/lms/frontend
-test -f /home/frappe/frappe-bench/apps/lms/frontend/node_modules/shaka-player/package.json
+if ! compgen -G '/home/frappe/frappe-bench/assets/lms/frontend/assets/shaka-player.compiled-*.js' >/dev/null; then
+	echo "The compiled Shaka Player asset is missing." >&2
+	exit 1
+fi
+test ! -d /home/frappe/frappe-bench/apps/lms/frontend/node_modules
 
 python - <<'PY'
 import sys
@@ -34,4 +38,3 @@ if [[ -S /var/run/docker.sock ]]; then
 fi
 
 echo "Image smoke checks passed."
-

@@ -91,7 +91,7 @@ For a private source repository, clone with your normal deploy key. The source c
 
 ## 2. Publish and authorize the private GHCR image
 
-The workflow at `.github/workflows/publish-deployment-image.yml` runs only when a GitHub Release is published. It builds `linux/amd64`, smoke-tests the runtime, publishes the release and commit tags, creates a provenance attestation, and prints the immutable digest in the Actions job summary.
+The workflow at `.github/workflows/publish-deployment-image.yml` runs only when a GitHub Release is published. It builds `linux/amd64`, smoke-tests the runtime, creates and migrates a disposable site with Payments/LMS, runs `check-video-pipeline`, publishes the release and commit tags, creates a provenance attestation, and prints the immutable digest in the Actions job summary.
 
 Recommended release tags follow this form:
 
@@ -147,9 +147,10 @@ docker run --rm --entrypoint /usr/local/sbin/rmu-lms-smoke-image \
   "ghcr.io/rmu-somalia/frappe-lms:$RELEASE_TAG"
 docker push "ghcr.io/rmu-somalia/frappe-lms:$RELEASE_TAG"
 docker push "ghcr.io/rmu-somalia/frappe-lms:sha-$RELEASE_SHA"
+docker buildx imagetools inspect "ghcr.io/rmu-somalia/frappe-lms:$RELEASE_TAG"
 ```
 
-Record the pushed digest from `docker inspect` and deploy `name@sha256:digest`, not the mutable tag.
+Record the pushed manifest digest from `docker buildx imagetools inspect` and deploy `name@sha256:digest`, not the mutable tag.
 
 ## 3. Create configuration and secrets
 
@@ -219,8 +220,10 @@ Create the site interactively. Enter the value stored in `/etc/rmu-lms/db-root-p
 sudo docker compose --env-file .env exec backend \
   bench new-site "$SITE_NAME" \
   --set-default \
-  --mariadb-user-host-login-scope='172.%.%.%'
+  --mariadb-user-host-login-scope='%'
 ```
+
+The wildcard applies only to the generated site database account. MariaDB has no published host port, so it remains reachable only from the private Compose network while all application containers can survive IP changes.
 
 Install Payments before LMS:
 
@@ -420,7 +423,7 @@ Run recovery tests in an isolated Compose project or another server. Never test 
      bench --site "$SITE_NAME" restore /path/inside/container/database.sql.gz
    ```
 
-   Copy the dump into the backend first with `docker compose cp` if necessary.
+   Copy the dump into the backend first with `sudo docker compose cp` if necessary.
 
 6. Copy the restored `public/files` and `private/files` trees into the isolated site's volume. Run a one-shot container as root to reset ownership to `1000:1000`.
 7. Read `encryption_key` from the restored `site_config.json` and apply only that key to the newly created site's config. Preserve the recovery site's freshly generated `db_name` and `db_password`; do not replace its whole config with production database credentials.

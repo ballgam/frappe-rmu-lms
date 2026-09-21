@@ -148,6 +148,8 @@ RUN set -eux; \
         git -C "/opt/source/apps/${app}" commit --quiet --message "Container build source"; \
     done \
     && printf 'frappe\n' > /opt/source/sites/apps.txt \
+    && mkdir -p /home/frappe/apps-extra \
+    && mv /opt/source/apps/payments /opt/source/apps/lms /home/frappe/apps-extra/ \
     && mkdir -p /home/frappe/frappe-bench \
     && cd /home/frappe/frappe-bench \
     && bench init . \
@@ -160,6 +162,7 @@ RUN set -eux; \
         --skip-assets \
         --skip-redis-config-generation \
     && cd /home/frappe/frappe-bench \
+    && cp -R /home/frappe/apps-extra/payments /home/frappe/apps-extra/lms apps/ \
     && uv pip install \
         --python env/bin/python \
         -e apps/payments \
@@ -170,6 +173,7 @@ RUN set -eux; \
     && printf 'frappe\npayments\nlms\n' > sites/apps.txt \
     && bench build --production \
     && printf '{}\n' > sites/common_site_config.json \
+    && rm -rf apps/lms/node_modules apps/lms/frontend/node_modules \
     && find apps -mindepth 2 -type d -name .git -prune -exec rm -rf '{}' + \
     && find apps -type d \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache \) -prune -exec rm -rf '{}' +
 
@@ -191,8 +195,7 @@ COPY --from=builder --chown=frappe:frappe /home/frappe/frappe-bench /home/frappe
 WORKDIR /home/frappe/frappe-bench
 RUN cp -a sites/assets /home/frappe/frappe-bench/assets \
     && rm -rf sites/assets \
-    && mkdir -p logs \
-    && chown -R frappe:frappe /home/frappe/frappe-bench
+    && install -d -o frappe -g frappe logs
 
 VOLUME ["/home/frappe/frappe-bench/sites", "/home/frappe/frappe-bench/logs"]
 
