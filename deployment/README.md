@@ -16,7 +16,11 @@ Production hosts are Ubuntu 24.04 or RHEL, with Docker Engine and
 Compose (`docker compose` or `docker-compose`), systemd, sudo access, and Apache
 HTTPS for the LMS subdomain. The existing capacity recommendation is at least 16 vCPU, 32 GB
 RAM, and 1 TB NVMe storage. Keep enough free space for source videos, packaged
-media, local snapshots, and the Docker build cache. On SELinux-enforcing RHEL,
+media, local snapshots, and the Docker build cache. Compose caps each
+container's CPU through the `*_CPUS` values in `deployment/.env`; lower them on
+a small host and raise them on a larger one. No value may exceed the CPU count
+available to the Docker engine (for example, `QUEUE_LONG_CPUS=4.0` on a 4-CPU
+host), or Compose refuses to create that container. On SELinux-enforcing RHEL,
 the script labels only its two secret files for container access; Compose
 labels the dedicated backup mount for sharing between backup containers.
 

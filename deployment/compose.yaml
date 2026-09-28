@@ -54,7 +54,7 @@ x-backup-service: &backup-service
       condition: service_healthy
     redis-queue:
       condition: service_healthy
-  cpus: "2.0"
+  cpus: "${BACKUP_CPUS:-2.0}"
   mem_limit: 2g
 
 services:
@@ -89,7 +89,7 @@ services:
         condition: service_healthy
       redis-queue:
         condition: service_healthy
-    cpus: "0.50"
+    cpus: "${CONFIGURATOR_CPUS:-0.50}"
     mem_limit: 512m
 
   backend:
@@ -104,7 +104,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    cpus: "4.0"
+    cpus: "${BACKEND_CPUS:-4.0}"
     mem_limit: 8g
 
   frontend:
@@ -134,7 +134,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    cpus: "1.0"
+    cpus: "${FRONTEND_CPUS:-1.0}"
     mem_limit: 1g
 
   websocket:
@@ -146,7 +146,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    cpus: "1.0"
+    cpus: "${WEBSOCKET_CPUS:-1.0}"
     mem_limit: 1g
 
   queue-short:
@@ -159,7 +159,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    cpus: "2.0"
+    cpus: "${QUEUE_SHORT_CPUS:-2.0}"
     mem_limit: 2g
 
   queue-long:
@@ -172,7 +172,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    cpus: "8.0"
+    cpus: "${QUEUE_LONG_CPUS:-4.0}"
     mem_limit: 12g
 
   scheduler:
@@ -184,7 +184,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    cpus: "1.0"
+    cpus: "${SCHEDULER_CPUS:-1.0}"
     mem_limit: 768m
 
   db:
@@ -209,7 +209,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    cpus: "3.0"
+    cpus: "${DB_CPUS:-3.0}"
     mem_limit: 4g
 
   redis-cache:
@@ -222,7 +222,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
-    cpus: "0.50"
+    cpus: "${REDIS_CACHE_CPUS:-0.50}"
     mem_limit: 512m
 
   redis-queue:
@@ -237,7 +237,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
-    cpus: "0.50"
+    cpus: "${REDIS_QUEUE_CPUS:-0.50}"
     mem_limit: 512m
 
   backup:

@@ -55,9 +55,36 @@ config_set() {
 	mv -f "$temporary" "$env_file"
 }
 
+seed_resource_limits() {
+	# Add missing CPU limits so operators can tune them per host. Never
+	# overwrite a value the operator has already set.
+	local defaults=(
+		"CONFIGURATOR_CPUS=0.50"
+		"BACKEND_CPUS=4.0"
+		"FRONTEND_CPUS=1.0"
+		"WEBSOCKET_CPUS=1.0"
+		"QUEUE_SHORT_CPUS=2.0"
+		"QUEUE_LONG_CPUS=4.0"
+		"SCHEDULER_CPUS=1.0"
+		"DB_CPUS=3.0"
+		"REDIS_CACHE_CPUS=0.50"
+		"REDIS_QUEUE_CPUS=0.50"
+		"BACKUP_CPUS=2.0"
+	)
+	local entry
+	for entry in "${defaults[@]}"; do
+		if [[ -z $(config_get "${entry%%=*}") ]]; then
+			config_set "${entry%%=*}" "${entry#*=}"
+		fi
+	done
+}
+
 compose() {
 	env -u LMS_IMAGE -u SITE_NAME -u FRONTEND_BIND -u BACKUP_DIR \
 		-u DB_ROOT_PASSWORD_FILE -u RESTIC_PASSWORD_FILE -u RESTIC_REPOSITORY -u BACKUP_TAG \
+		-u CONFIGURATOR_CPUS -u BACKEND_CPUS -u FRONTEND_CPUS -u WEBSOCKET_CPUS \
+		-u QUEUE_SHORT_CPUS -u QUEUE_LONG_CPUS -u SCHEDULER_CPUS -u DB_CPUS \
+		-u REDIS_CACHE_CPUS -u REDIS_QUEUE_CPUS -u BACKUP_CPUS \
 		"$script_dir/scripts/compose-cli.sh" --project-name rmu-lms --project-directory "$script_dir" \
 		--file "$script_dir/compose.yaml" --env-file "$env_file" "$@"
 }
@@ -189,6 +216,7 @@ configure_environment() {
 	[[ "$backup_dir" == "$expected_backup_dir" ]] || \
 		die "This deployment uses BACKUP_DIR=${expected_backup_dir}."
 	config_set BACKUP_DIR "$backup_dir"
+	seed_resource_limits
 
 	ensure_secret "$(config_get DB_ROOT_PASSWORD_FILE)"
 	ensure_secret "$(config_get RESTIC_PASSWORD_FILE)"
