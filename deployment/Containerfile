@@ -92,6 +92,7 @@ COPY deployment/docker/nginx-entrypoint.sh /usr/local/bin/nginx-entrypoint.sh
 COPY deployment/docker/main-entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY deployment/docker/start.sh /usr/local/bin/start.sh
 COPY deployment/scripts/backup-container.sh /usr/local/sbin/rmu-lms-backup
+COPY deployment/scripts/backup-scheduler.sh /usr/local/sbin/rmu-lms-backup-scheduler
 COPY deployment/scripts/smoke-image.sh /usr/local/sbin/rmu-lms-smoke-image
 
 RUN chmod 0755 \
@@ -99,6 +100,7 @@ RUN chmod 0755 \
         /usr/local/bin/nginx-entrypoint.sh \
         /usr/local/bin/start.sh \
         /usr/local/sbin/rmu-lms-backup \
+        /usr/local/sbin/rmu-lms-backup-scheduler \
         /usr/local/sbin/rmu-lms-smoke-image \
     && chmod 0644 /templates/nginx/frappe.conf.template /etc/nginx/snippets/security_headers.conf
 

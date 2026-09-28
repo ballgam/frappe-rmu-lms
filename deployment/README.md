@@ -1,4 +1,4 @@
-# RMU Somalia LMS: deploy from source on one Ubuntu server
+# RMU Somalia LMS: deploy from source with Docker
 
 This deployment builds the application's Docker image on the server. There is
 no GitHub Release, GHCR login, image push, or image digest to copy. The image
@@ -10,13 +10,22 @@ pinned MariaDB and Redis images.
 The deployment is independent of `apps/lms/deploy/`. Do not mix commands or
 volumes from that directory into this stack.
 
-## One-time server preparation
+## One-time host preparation
 
-Use an Ubuntu 24.04 x86_64 server with Docker Engine and its Compose plugin,
-Apache with HTTPS for the LMS subdomain, and sudo access. The existing capacity
-recommendation is at least 16 vCPU, 32 GB RAM, and 1 TB NVMe storage. Keep
-enough free space for source videos, packaged media, local snapshots, and the
-Docker build cache.
+Production hosts are Ubuntu 24.04 or RHEL, with Docker Engine and
+Compose (`docker compose` or `docker-compose`), systemd, sudo access, and Apache
+HTTPS for the LMS subdomain. The existing capacity recommendation is at least 16 vCPU, 32 GB
+RAM, and 1 TB NVMe storage. Keep enough free space for source videos, packaged
+media, local snapshots, and the Docker build cache. On SELinux-enforcing RHEL,
+the script labels only its two secret files for container access; Compose
+labels the dedicated backup mount for sharing between backup containers.
+
+For a full local deployment on macOS, use Docker Desktop with Compose and run
+the script as your normal user, not with `sudo`. The application image is
+`linux/amd64` because it contains pinned x64 binaries. ARM hosts, including
+Apple Silicon, need Docker's amd64 emulation; the first build and video
+processing can be slow. No Apache or TLS is needed for this local setup. Keep
+Docker Desktop running for scheduled backups.
 
 The server needs access to:
 
@@ -28,7 +37,7 @@ The build verifies downloaded Node.js, wkhtmltopdf, and Shaka Packager files
 with the SHA-256 values in `Containerfile`. Docker caches build layers, so
 unchanged dependencies normally do not download again.
 
-Clone the repository as the user who will run deployments. For example:
+Clone the repository as the user who will run deployments. On Linux, for example:
 
 ```bash
 sudo install -d -o "$USER" -g "$(id -gn)" /opt/rmu-lms
@@ -38,11 +47,15 @@ docker version
 docker compose version
 ```
 
+On macOS, clone it under a Docker Desktop-shared directory such as your home
+directory, then confirm `docker info` and either `docker compose version` or
+`docker-compose version` work.
+
 For a private repository, configure that user's Git authentication before
 choosing to pull updates. The server checkout's tracked upstream branch is the
 source of updates; its remote does not have to be named `origin`.
 
-Ask the Apache administrator to route the LMS HTTPS hostname to
+For production, ask the Apache administrator to route the LMS HTTPS hostname to
 `127.0.0.1:8080` (or the local port selected at the first prompt). The proxy
 must preserve `Host`, forward `X-Forwarded-Proto: https`, pass WebSocket
 upgrades for `/socket.io/`, and allow the intended 2 GB upload size with a
@@ -64,11 +77,15 @@ server without contacting the Git remote. Either choice requires a clean
 checkout; commit local edits before deploying. If an upgrade is pending, the
 script resumes that revision without asking or fetching new source.
 
-On the first run, also enter the public LMS hostname (without `https://`), accept
-local port `8080` unless it is occupied, and choose an Administrator password.
-The script asks for sudo when it needs Docker or root-owned files. It creates
-`deployment/.env`, two root-only secrets under `/etc/rmu-lms/`, and an encrypted
-local backup repository under `/var/backups/rmu-lms/`.
+On the first run, choose an Administrator password and accept local port `8080`
+unless it is occupied. On Linux, enter the public LMS hostname (without
+`https://`); the script asks for sudo when it needs Docker or root-owned files.
+It creates `deployment/.env`, two root-only secrets under `/etc/rmu-lms/`, and
+encrypted local backups under `/var/backups/rmu-lms/`. On macOS, accept the
+default `lms.localhost` hostname. The script creates user-owned secrets and
+encrypted backups under ignored `deployment/local-data/` and serves the site
+at `http://127.0.0.1:8080/lms` (or your chosen local port). Do not delete
+that directory if you want to retain its backup snapshots.
 
 On later runs, the same command:
 
@@ -96,16 +113,17 @@ If an upgrade has stopped before migration begins and you need to return to
 the previous image, run `./deployment/deploy.sh --abort-pending`. The command
 refuses to roll back once migration may have started.
 
-The script reports whether the public HTTPS check passed. A local health check
-can pass before the Apache route is configured; in that case it prints the
-local address and the remaining proxy action.
+On Linux, the script reports whether the public HTTPS check passed. A local
+health check can pass before the Apache route is configured; in that case it
+prints the local address and the remaining proxy action. On macOS, it reports
+the local HTTP address and does not require a public HTTPS route.
 
 ## What runs
 
 The site is hosted by one Compose project named `rmu-lms`:
 
 ```text
-Apache HTTPS (managed by the server administrator)
+Apache HTTPS (production; managed by the server administrator)
     -> 127.0.0.1:8080 -> frontend Nginx -> Frappe backend
                                       -> Socket.IO
 Docker-only network -> short/default worker, long worker pool, scheduler
@@ -126,24 +144,28 @@ enrollment, upload a short recording and confirm that an `LMS Video` reaches
 ## Local backups and recovery
 
 `deployment/scripts/backup-host.sh` creates encrypted Restic snapshots in
-`/var/backups/rmu-lms/restic`. A systemd timer also runs it nightly. A snapshot
-contains a logical database dump, site configuration, public/private files,
+`/var/backups/rmu-lms/restic` on Linux or `deployment/local-data/backups/restic`
+on macOS. Linux uses the existing systemd timer for nightly backups; macOS
+starts a backup-scheduler container that repeats a backup every 24 hours while
+Docker Desktop is running. A snapshot contains a logical database dump, site
+configuration, public/private files,
 and completed DASH packages. It excludes transient media staging files. The
 backup script checks repository metadata and retains 7 daily, 4 weekly, and
 6 monthly snapshots, plus the three most recent snapshots so a deployment
 backup is not immediately displaced by the nightly timer.
 
-Inspect snapshots from `deployment/`:
+Inspect snapshots from `deployment/` (omit `sudo` on macOS):
 
 ```bash
-sudo docker compose --env-file .env --profile backup run --rm \
+sudo ./scripts/compose-cli.sh --env-file .env --profile backup run --rm \
   --entrypoint restic backup snapshots
 ```
 
-Keep `/etc/rmu-lms/restic-password` in a separate secure location. Without it,
-the snapshots cannot be read. Backups on this server protect against a bad
-deployment but not against server or disk loss. Arrange a separate copy of the
-backup directory before relying on it for disaster recovery.
+Keep `/etc/rmu-lms/restic-password` on Linux, or
+`deployment/local-data/secrets/restic-password` on macOS, in a separate secure
+location. Without it, the snapshots cannot be read. Local backups protect
+against a bad deployment but not against host or disk loss. Arrange a separate
+copy of the backup directory before relying on it for disaster recovery.
 
 If a migration is interrupted, leave the old image available and inspect
 `deployment/.deploy-pending` plus the backend logs. Do not start the old image
@@ -155,13 +177,13 @@ previous image tag and source SHA remain recorded for that recovery work.
 
 ## Status and troubleshooting
 
-From `deployment/`:
+From `deployment/` (omit `sudo` on macOS):
 
 ```bash
-sudo docker compose --env-file .env ps
-sudo docker compose --env-file .env logs --tail=200 backend
-sudo docker compose --env-file .env logs --tail=200 queue-long
-sudo docker compose --env-file .env exec backend \
+sudo ./scripts/compose-cli.sh --env-file .env ps
+sudo ./scripts/compose-cli.sh --env-file .env logs --tail=200 backend
+sudo ./scripts/compose-cli.sh --env-file .env logs --tail=200 queue-long
+sudo ./scripts/compose-cli.sh --env-file .env exec backend \
   bench --site YOUR_LMS_DOMAIN check-video-pipeline
 curl --fail --header 'Host: YOUR_LMS_DOMAIN' \
   http://127.0.0.1:8080/api/method/ping

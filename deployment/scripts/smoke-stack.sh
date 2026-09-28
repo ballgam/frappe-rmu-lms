@@ -9,7 +9,7 @@ state_dir=$(mktemp -d /tmp/rmu-lms-stack-smoke.XXXXXX)
 project_name="rmu-lms-smoke-${GITHUB_RUN_ID:-local}-$$"
 
 cleanup() {
-	docker compose --project-name "$project_name" --file "$compose_file" down \
+	"$script_dir/compose-cli.sh" --project-name "$project_name" --file "$compose_file" down \
 		--volumes --remove-orphans >/dev/null 2>&1 || true
 	rm -rf "$state_dir"
 }
@@ -28,7 +28,7 @@ export RESTIC_PASSWORD_FILE="${state_dir}/restic-password"
 export BACKUP_DIR="${state_dir}/backup"
 export RESTIC_REPOSITORY=/backup/restic
 
-compose=(docker compose --project-name "$project_name" --file "$compose_file")
+compose=("$script_dir/compose-cli.sh" --project-name "$project_name" --file "$compose_file")
 
 echo "Starting disposable MariaDB and Redis services..."
 "${compose[@]}" up --detach --wait db redis-cache redis-queue

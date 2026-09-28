@@ -4,6 +4,7 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo_dir=$(cd -- "$script_dir/.." && pwd)
+host_os=$(uname -s)
 env_file="$script_dir/.env"
 state_file="$script_dir/.deploy-state"
 pending_file="$script_dir/.deploy-pending"
@@ -19,13 +20,14 @@ Usage: ./deployment/deploy.sh
 Run this as the user who owns the Git checkout (without sudo). The command
 asks whether to fast-forward its configured upstream branch or use the current
 commit, then builds the application locally and creates or upgrades the site.
-It asks for the public domain on first use.
+It asks for a public domain on Linux or a local hostname on macOS first use.
 --abort-pending returns to the previous image only if migration has not begun.
 
-Prerequisites: Ubuntu 24.04 x86_64, Docker Engine with Compose, sudo access,
-and an Apache HTTPS route to the chosen 127.0.0.1 port. The server needs access
-to container images and build dependency repositories, plus the Git remote
-when pulling updates.
+Production prerequisites: Ubuntu or RHEL, Docker Engine with Compose,
+sudo and systemd, plus an Apache HTTPS route to the chosen 127.0.0.1 port.
+macOS local testing requires Docker Desktop with Compose. Both need access to
+container images and build dependencies, plus the Git remote when pulling.
+Non-x86_64 hosts must support linux/amd64 container emulation.
 EOF
 }
 
@@ -55,8 +57,9 @@ config_set() {
 
 compose() {
 	env -u LMS_IMAGE -u SITE_NAME -u FRONTEND_BIND -u BACKUP_DIR \
-		docker compose --project-name rmu-lms --project-directory "$script_dir" \
-		--env-file "$env_file" "$@"
+		-u DB_ROOT_PASSWORD_FILE -u RESTIC_PASSWORD_FILE -u RESTIC_REPOSITORY -u BACKUP_TAG \
+		"$script_dir/scripts/compose-cli.sh" --project-name rmu-lms --project-directory "$script_dir" \
+		--file "$script_dir/compose.yaml" --env-file "$env_file" "$@"
 }
 
 valid_domain() {
@@ -83,7 +86,7 @@ choose_source() {
 prepare_source() {
 	local branch remote merge_ref source_sha source_choice mode=${1:-deploy}
 	require_command git
-	require_command sudo
+	[[ "$host_os" == Darwin ]] || require_command sudo
 	[[ -z $(git -C "$repo_dir" status --porcelain --untracked-files=normal) ]] || \
 		die "The checkout has local changes. Commit or resolve them before deploying."
 
@@ -114,16 +117,28 @@ prepare_source() {
 	source_sha=$(git -C "$repo_dir" rev-parse HEAD)
 	# Start the version of this script from the selected checkout.
 	if [[ "$mode" == abort ]]; then
+		if [[ "$host_os" == Darwin ]]; then
+			exec "$script_dir/deploy.sh" --abort-stage "$source_sha"
+		fi
 		exec sudo -- "$script_dir/deploy.sh" --abort-stage "$source_sha"
+	fi
+	if [[ "$host_os" == Darwin ]]; then
+		exec "$script_dir/deploy.sh" --deploy-stage "$source_sha"
 	fi
 	exec sudo -- "$script_dir/deploy.sh" --deploy-stage "$source_sha"
 }
 
 ensure_secret() {
-	local path=$1
-	[[ "$path" == /etc/rmu-lms/* && "$path" != *'..'* && "$path" != *$'\n'* ]] || \
-		die "Secret path must be below /etc/rmu-lms: $path"
-	install -d -m 0700 "$(dirname -- "$path")"
+	local path=$1 secret_dir
+	if [[ "$host_os" == Darwin ]]; then
+		secret_dir="$script_dir/local-data/secrets"
+	else
+		secret_dir=/etc/rmu-lms
+	fi
+	[[ "$path" == "$secret_dir/"* && "$path" != *'..'* && "$path" != *$'\n'* ]] || \
+		die "Secret path must be below ${secret_dir}: $path"
+	[[ ! -L "$secret_dir" ]] || die "Secret directory must not be a symlink: $secret_dir"
+	install -d -m 0700 "$secret_dir"
 	if [[ ! -e "$path" ]]; then
 		(umask 077; openssl rand -base64 48 > "$path")
 	fi
@@ -132,10 +147,15 @@ ensure_secret() {
 }
 
 configure_environment() {
-	local requested_domain requested_port bind
+	local requested_domain requested_port bind expected_backup_dir
 	if [[ ! -f "$env_file" ]]; then
 		step "First-time site configuration"
-		read -r -p 'Public LMS domain (for example lms.example.org): ' requested_domain
+		if [[ "$host_os" == Darwin ]]; then
+			read -r -p 'Local LMS hostname [lms.localhost]: ' requested_domain
+			requested_domain=${requested_domain:-lms.localhost}
+		else
+			read -r -p 'Public LMS domain (for example lms.example.org): ' requested_domain
+		fi
 		valid_domain "$requested_domain" || die "Enter a DNS hostname, without https:// or a path."
 		read -r -p 'Local proxy port [8080]: ' requested_port
 		requested_port=${requested_port:-8080}
@@ -145,6 +165,11 @@ configure_environment() {
 		chmod 0600 "$env_file"
 		config_set SITE_NAME "$requested_domain"
 		config_set FRONTEND_BIND "127.0.0.1:${requested_port}"
+		if [[ "$host_os" == Darwin ]]; then
+			config_set DB_ROOT_PASSWORD_FILE "$script_dir/local-data/secrets/db-root-password"
+			config_set RESTIC_PASSWORD_FILE "$script_dir/local-data/secrets/restic-password"
+			config_set BACKUP_DIR "$script_dir/local-data/backups"
+		fi
 	fi
 	chmod 0600 "$env_file"
 
@@ -155,14 +180,31 @@ configure_environment() {
 		die "FRONTEND_BIND must use a loopback address, such as 127.0.0.1:8080."
 	local_port=${bind##*:}
 	backup_dir=$(config_get BACKUP_DIR)
-	backup_dir=${backup_dir:-/var/backups/rmu-lms}
-	[[ "$backup_dir" == /var/backups/rmu-lms ]] || \
-		die "This deployment uses BACKUP_DIR=/var/backups/rmu-lms."
+	if [[ "$host_os" == Darwin ]]; then
+		expected_backup_dir="$script_dir/local-data/backups"
+	else
+		expected_backup_dir=/var/backups/rmu-lms
+	fi
+	backup_dir=${backup_dir:-$expected_backup_dir}
+	[[ "$backup_dir" == "$expected_backup_dir" ]] || \
+		die "This deployment uses BACKUP_DIR=${expected_backup_dir}."
 	config_set BACKUP_DIR "$backup_dir"
 
 	ensure_secret "$(config_get DB_ROOT_PASSWORD_FILE)"
 	ensure_secret "$(config_get RESTIC_PASSWORD_FILE)"
-	install -d -o 0 -g 0 -m 0700 "$backup_dir" "$backup_dir/restic"
+	if [[ "$host_os" == Linux ]] && command -v getenforce >/dev/null 2>&1 && \
+		[[ $(getenforce) == Enforcing ]]; then
+		require_command chcon
+		chcon -t container_file_t \
+			"$(config_get DB_ROOT_PASSWORD_FILE)" \
+			"$(config_get RESTIC_PASSWORD_FILE)"
+	fi
+	[[ ! -L "$backup_dir" ]] || die "Backup directory must not be a symlink: $backup_dir"
+	if [[ "$host_os" == Darwin ]]; then
+		install -d -m 0700 "$backup_dir" "$backup_dir/restic"
+	else
+		install -d -o 0 -g 0 -m 0700 "$backup_dir" "$backup_dir/restic"
+	fi
 }
 
 build_image() {
@@ -183,19 +225,20 @@ build_image() {
 	fi
 	candidate_id=$(docker image inspect --format '{{.Id}}' "$candidate_image")
 	step "Checking the built image"
-	docker run --rm --pull never --entrypoint /usr/local/sbin/rmu-lms-smoke-image "$candidate_image"
+	docker run --rm --pull never --platform linux/amd64 \
+		--entrypoint /usr/local/sbin/rmu-lms-smoke-image "$candidate_image"
 }
 
 site_exists() {
 	docker volume inspect rmu-lms_sites >/dev/null 2>&1 || return 1
-	docker run --rm --pull never --volume rmu-lms_sites:/site-volume:ro \
+	docker run --rm --pull never --platform linux/amd64 --volume rmu-lms_sites:/site-volume:ro \
 		--entrypoint test "$candidate_image" -f "/site-volume/${site_name}/site_config.json" \
 		>/dev/null 2>&1
 }
 
 another_site_exists() {
 	docker volume inspect rmu-lms_sites >/dev/null 2>&1 || return 1
-	[[ -n $(docker run --rm --pull never --volume rmu-lms_sites:/site-volume:ro \
+	[[ -n $(docker run --rm --pull never --platform linux/amd64 --volume rmu-lms_sites:/site-volume:ro \
 		--entrypoint find "$candidate_image" /site-volume -mindepth 2 -maxdepth 2 \
 		-name site_config.json -print -quit) ]]
 }
@@ -223,7 +266,11 @@ configure_site() {
 		step "Installing LMS"
 		backend_bench install-app lms
 	fi
-	backend_bench set-config host_name "https://${site_name}"
+	if [[ "$host_os" == Darwin ]]; then
+		backend_bench set-config host_name "http://127.0.0.1:${local_port}"
+	else
+		backend_bench set-config host_name "https://${site_name}"
+	fi
 	backend_bench set-config --parse max_file_size 2147483648
 	backend_bench enable-scheduler
 	backend_bench execute frappe.db.set_single_value --args '["LMS Settings", "video_packager_mode", "Binary"]'
@@ -242,7 +289,7 @@ wait_for_local_site() {
 		fi
 		sleep 3
 	done
-	die "Local LMS health check failed. Run: sudo docker compose -f deployment/compose.yaml logs --tail=100 backend"
+	die "Local LMS health check failed. Inspect backend logs with Docker Compose."
 }
 
 wait_for_services() {
@@ -267,7 +314,7 @@ wait_for_services() {
 		[[ "$all_ready" == true ]] && return 0
 		sleep 3
 	done
-	die "A service did not become healthy within five minutes. Inspect: sudo docker compose -f deployment/compose.yaml ps"
+	die "A service did not become healthy within five minutes. Inspect Docker Compose service status."
 }
 
 verify_stack() {
@@ -283,6 +330,11 @@ verify_stack() {
 
 install_backup_timer() {
 	local escaped_repo temporary
+	if [[ "$host_os" == Darwin ]]; then
+		step "Starting the daily local-backup container"
+		compose --profile backup-scheduler up --wait --wait-timeout 180 backup-scheduler
+		return
+	fi
 	escaped_repo=$(printf '%s' "$repo_dir" | sed 's/[&|\\]/\\&/g')
 	temporary=$(mktemp /tmp/rmu-lms-backup.service.XXXXXX)
 	sed "s|/opt/rmu-lms|${escaped_repo}|g" "$script_dir/systemd/rmu-lms-backup.service" > "$temporary"
@@ -311,6 +363,11 @@ write_pending() {
 }
 
 public_check() {
+	if [[ "$host_os" == Darwin ]]; then
+		echo "LMS is available locally at http://127.0.0.1:${local_port}/lms"
+		echo "Keep Docker Desktop running for the daily local backups."
+		return
+	fi
 	if curl --fail --silent --show-error --max-time 15 \
 		"https://${site_name}/api/method/ping" >/dev/null; then
 		echo "LMS is available at https://${site_name}/lms"
@@ -429,20 +486,22 @@ abort_pending() {
 	compose up --no-deps configurator
 	backend_bench set-maintenance-mode off
 	verify_stack
+	install_backup_timer
 	rm -f -- "$pending_file"
 	public_check
 }
 
-deploy_as_root() {
+deploy_stage() {
 	local expected_sha=$1 current_image state_sha='' state_id='' current_id backend_container running_id
-	[[ $(uname -m) == x86_64 ]] || die "This image currently supports x86_64 Ubuntu hosts only."
 	[[ $(git -c "safe.directory=$repo_dir" -C "$repo_dir" rev-parse HEAD) == "$expected_sha" ]] || \
 		die "The checkout changed before deployment. Rerun the deployment."
 	[[ -z $(git -c "safe.directory=$repo_dir" -C "$repo_dir" status --porcelain --untracked-files=normal) ]] || \
 		die "The checkout changed before deployment. Resolve local changes before deploying."
-	for tool in docker git curl openssl sed install systemctl; do require_command "$tool"; done
+	for tool in docker git curl openssl sed install; do require_command "$tool"; done
+	[[ "$host_os" == Darwin ]] || require_command systemctl
 	docker info >/dev/null 2>&1 || die "Docker Engine is not running or not accessible."
-	docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is missing."
+	"$script_dir/scripts/compose-cli.sh" version >/dev/null 2>&1 || \
+		die "Docker Compose is missing (docker compose or docker-compose)."
 	source_sha=$expected_sha
 	configure_environment
 	build_image
@@ -480,6 +539,7 @@ deploy_as_root() {
 				die "The configured image differs from the completed deployment record. Inspect before proceeding."
 			step "This revision is already deployed; checking the stack"
 			verify_stack
+			install_backup_timer
 			public_check
 		else
 			# A first run created the site but was interrupted before completion.
@@ -506,18 +566,30 @@ deploy_as_root() {
 }
 
 main() {
+	[[ "$host_os" == Linux || "$host_os" == Darwin ]] || die "Unsupported host OS: $host_os"
 	case "${1:-}" in
 		-h|--help) usage ;;
 		--abort-stage)
-			[[ $# -eq 2 && $EUID -eq 0 ]] || die "Invalid internal abort invocation."
-			for tool in docker git curl openssl sed install systemctl; do require_command "$tool"; done
+			[[ $# -eq 2 ]] || die "Invalid internal abort invocation."
+			if [[ "$host_os" == Linux ]]; then
+				(( EUID == 0 )) || die "The Linux deployment stage requires sudo."
+			else
+				(( EUID != 0 )) || die "Run the macOS deployment as your Docker Desktop user."
+			fi
+			for tool in docker git curl openssl sed install; do require_command "$tool"; done
+			[[ "$host_os" == Darwin ]] || require_command systemctl
 			source_sha=$2
 			configure_environment
 			abort_pending
 			;;
 		--deploy-stage)
-			[[ $# -eq 2 && $EUID -eq 0 ]] || die "Invalid internal deployment invocation."
-			deploy_as_root "$2"
+			[[ $# -eq 2 ]] || die "Invalid internal deployment invocation."
+			if [[ "$host_os" == Linux ]]; then
+				(( EUID == 0 )) || die "The Linux deployment stage requires sudo."
+			else
+				(( EUID != 0 )) || die "Run the macOS deployment as your Docker Desktop user."
+			fi
+			deploy_stage "$2"
 			;;
 		'')
 			if (( EUID == 0 )); then

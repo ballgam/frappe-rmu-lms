@@ -34,3 +34,5 @@ deployment/.deploy-state*
 deployment/.deploy-pending*
 deployment/secrets
 deployment/secrets/**
+deployment/local-data
+deployment/local-data/**

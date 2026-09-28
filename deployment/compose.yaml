@@ -10,6 +10,8 @@ x-image: &application-image
   image: ${LMS_IMAGE:?Set LMS_IMAGE to a locally built rmu-lms image}
   # The deploy script builds this image on the host. Never try a registry.
   pull_policy: never
+  # The image includes checksum-pinned x64 tools; Apple Silicon runs it under emulation.
+  platform: linux/amd64
   init: true
   restart: unless-stopped
   logging: *default-logging
@@ -23,6 +25,37 @@ x-configured-application: &configured-application
       condition: service_completed_successfully
   volumes:
     - sites:/home/frappe/frappe-bench/sites
+
+x-backup-service: &backup-service
+  <<: *application-image
+  # Read the Restic secret as root, then run Bench as the frappe user.
+  user: "0:0"
+  environment:
+    SITE_NAME: ${SITE_NAME:?Set SITE_NAME to the LMS hostname}
+    RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/backup/restic}
+    RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+    BACKUP_TAG: ${BACKUP_TAG:-rmu-lms}
+    LMS_IMAGE: ${LMS_IMAGE}
+  secrets:
+    - restic_password
+  volumes:
+    - sites:/home/frappe/frappe-bench/sites
+    - type: bind
+      source: ${BACKUP_DIR:-/var/backups/rmu-lms}
+      target: /backup
+      bind:
+        selinux: z
+  depends_on:
+    configurator:
+      condition: service_completed_successfully
+    db:
+      condition: service_healthy
+    redis-cache:
+      condition: service_healthy
+    redis-queue:
+      condition: service_healthy
+  cpus: "2.0"
+  mem_limit: 2g
 
 services:
   configurator:
@@ -208,36 +241,15 @@ services:
     mem_limit: 512m
 
   backup:
-    <<: *application-image
+    <<: *backup-service
     profiles: ["backup"]
     restart: "no"
-    # Read the root-only Restic secret, then run Bench as the frappe user.
-    user: "0:0"
     entrypoint: ["/usr/local/sbin/rmu-lms-backup"]
-    environment:
-      SITE_NAME: ${SITE_NAME:?Set SITE_NAME to the production DNS name}
-      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/backup/restic}
-      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
-      BACKUP_TAG: ${BACKUP_TAG:-rmu-lms}
-      LMS_IMAGE: ${LMS_IMAGE}
-    secrets:
-      - restic_password
-    volumes:
-      - sites:/home/frappe/frappe-bench/sites
-      - type: bind
-        source: ${BACKUP_DIR:-/var/backups/rmu-lms}
-        target: /backup
-    depends_on:
-      configurator:
-        condition: service_completed_successfully
-      db:
-        condition: service_healthy
-      redis-cache:
-        condition: service_healthy
-      redis-queue:
-        condition: service_healthy
-    cpus: "2.0"
-    mem_limit: 2g
+
+  backup-scheduler:
+    <<: *backup-service
+    profiles: ["backup-scheduler"]
+    entrypoint: ["/usr/local/sbin/rmu-lms-backup-scheduler"]
 
 secrets:
   db_root_password:
