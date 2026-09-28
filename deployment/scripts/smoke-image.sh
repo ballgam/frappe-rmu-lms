@@ -17,7 +17,7 @@ if ! compgen -G '/home/frappe/frappe-bench/assets/lms/frontend/assets/shaka-play
 fi
 test ! -d /home/frappe/frappe-bench/apps/lms/frontend/node_modules
 
-python - <<'PY'
+/home/frappe/frappe-bench/env/bin/python - <<'PY'
 import sys
 
 sys.path.insert(0, "/home/frappe/frappe-bench/apps/frappe")
