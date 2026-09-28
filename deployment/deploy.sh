@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch a fast-forward source update, build one local image, and deploy RMU LMS.
+# Optionally fetch a fast-forward source update, then build and deploy RMU LMS.
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -17,13 +17,15 @@ Usage: ./deployment/deploy.sh
        ./deployment/deploy.sh --abort-pending
 
 Run this as the user who owns the Git checkout (without sudo). The command
-fast-forwards its configured upstream branch, builds the application locally,
-and creates or upgrades the site. It asks for the public domain on first use.
+asks whether to fast-forward its configured upstream branch or use the current
+commit, then builds the application locally and creates or upgrades the site.
+It asks for the public domain on first use.
 --abort-pending returns to the previous image only if migration has not begun.
 
 Prerequisites: Ubuntu 24.04 x86_64, Docker Engine with Compose, sudo access,
 and an Apache HTTPS route to the chosen 127.0.0.1 port. The server needs access
-to the Git remote, container images, and build dependency repositories.
+to container images and build dependency repositories, plus the Git remote
+when pulling updates.
 EOF
 }
 
@@ -65,8 +67,21 @@ require_command() {
 	command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"
 }
 
-fetch_source() {
-	local branch remote merge_ref source_sha mode=${1:-deploy}
+choose_source() {
+	local answer
+	while true; do
+		printf 'Pull latest changes before building? [Y/n] ' >&2
+		IFS= read -r answer || die "No source choice received. Rerun and answer y or n."
+		case "$answer" in
+			''|[Yy]|[Yy][Ee][Ss]) printf 'pull\n'; return ;;
+			[Nn]|[Nn][Oo]) printf 'current\n'; return ;;
+			*) echo 'Enter y to pull latest changes, or n to build the current commit.' >&2 ;;
+		esac
+	done
+}
+
+prepare_source() {
+	local branch remote merge_ref source_sha source_choice mode=${1:-deploy}
 	require_command git
 	require_command sudo
 	[[ -z $(git -C "$repo_dir" status --porcelain --untracked-files=normal) ]] || \
@@ -75,24 +90,29 @@ fetch_source() {
 	if [[ "$mode" == abort ]]; then
 		[[ -f "$pending_file" ]] || die "There is no pending upgrade to abort."
 	elif [[ -e "$pending_file" ]]; then
-		step "A previous upgrade is pending; resuming it before fetching more code"
+		step "A previous upgrade is pending; resuming without changing source"
 	else
-		branch=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD) || \
-			die "The checkout is detached. Check out the deployment branch."
-		remote=$(git -C "$repo_dir" config --get "branch.${branch}.remote") || \
-			die "Branch ${branch} has no upstream remote."
-		merge_ref=$(git -C "$repo_dir" config --get "branch.${branch}.merge") || \
-			die "Branch ${branch} has no upstream branch."
-		[[ "$remote" != . && "$merge_ref" == refs/heads/* ]] || \
-			die "Branch ${branch} must track a remote branch."
-		step "Fetching ${remote}/${merge_ref#refs/heads/}"
-		git -C "$repo_dir" fetch "$remote" "${merge_ref#refs/heads/}"
-		git -C "$repo_dir" merge --ff-only FETCH_HEAD || \
-			die "The branch cannot be fast-forwarded. No deployment changes were made."
+		source_choice=$(choose_source)
+		if [[ "$source_choice" == pull ]]; then
+			branch=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD) || \
+				die "The checkout is detached. Check out the deployment branch."
+			remote=$(git -C "$repo_dir" config --get "branch.${branch}.remote") || \
+				die "Branch ${branch} has no upstream remote."
+			merge_ref=$(git -C "$repo_dir" config --get "branch.${branch}.merge") || \
+				die "Branch ${branch} has no upstream branch."
+			[[ "$remote" != . && "$merge_ref" == refs/heads/* ]] || \
+				die "Branch ${branch} must track a remote branch."
+			step "Fetching ${remote}/${merge_ref#refs/heads/}"
+			git -C "$repo_dir" fetch "$remote" "${merge_ref#refs/heads/}"
+			git -C "$repo_dir" merge --ff-only FETCH_HEAD || \
+				die "The branch cannot be fast-forwarded. No deployment changes were made."
+		else
+			step "Building the current checked-out commit without fetching"
+		fi
 	fi
 
 	source_sha=$(git -C "$repo_dir" rev-parse HEAD)
-	# Start the version of this script that came from the fetched checkout.
+	# Start the version of this script from the selected checkout.
 	if [[ "$mode" == abort ]]; then
 		exec sudo -- "$script_dir/deploy.sh" --abort-stage "$source_sha"
 	fi
@@ -417,9 +437,9 @@ deploy_as_root() {
 	local expected_sha=$1 current_image state_sha='' state_id='' current_id backend_container running_id
 	[[ $(uname -m) == x86_64 ]] || die "This image currently supports x86_64 Ubuntu hosts only."
 	[[ $(git -c "safe.directory=$repo_dir" -C "$repo_dir" rev-parse HEAD) == "$expected_sha" ]] || \
-		die "The checkout changed after the fetch. Rerun the deployment."
+		die "The checkout changed before deployment. Rerun the deployment."
 	[[ -z $(git -c "safe.directory=$repo_dir" -C "$repo_dir" status --porcelain --untracked-files=normal) ]] || \
-		die "The checkout changed after the fetch. Resolve local changes before deploying."
+		die "The checkout changed before deployment. Resolve local changes before deploying."
 	for tool in docker git curl openssl sed install systemctl; do require_command "$tool"; done
 	docker info >/dev/null 2>&1 || die "Docker Engine is not running or not accessible."
 	docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is missing."
@@ -505,7 +525,7 @@ main() {
 					die "Run this script as the Git checkout owner, without sudo."
 				exec sudo -u "$SUDO_USER" -- "$script_dir/deploy.sh"
 			fi
-			fetch_source
+			prepare_source
 			;;
 		--abort-pending)
 			[[ $# -eq 1 ]] || die "Unknown argument after --abort-pending."
@@ -514,7 +534,7 @@ main() {
 					die "Run this script as the Git checkout owner, without sudo."
 				exec sudo -u "$SUDO_USER" -- "$script_dir/deploy.sh" --abort-pending
 			fi
-			fetch_source abort
+			prepare_source abort
 			;;
 		*) die "Unknown argument: $1" ;;
 	esac

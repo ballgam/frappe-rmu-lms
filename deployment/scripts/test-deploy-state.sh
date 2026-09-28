@@ -6,6 +6,18 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck disable=SC1091
 source "$script_dir/../deploy.sh"
 
+# The default selects pulling; declining selects the checked-out commit.
+[[ $(choose_source <<< '' 2>/dev/null) == pull ]]
+[[ $(choose_source <<< 'y' 2>/dev/null) == pull ]]
+[[ $(choose_source <<< 'Yes' 2>/dev/null) == pull ]]
+[[ $(choose_source <<< 'n' 2>/dev/null) == current ]]
+[[ $(choose_source <<< 'No' 2>/dev/null) == current ]]
+[[ $(printf 'invalid\nn\n' | choose_source 2>/dev/null) == current ]]
+if (choose_source </dev/null) >/dev/null 2>&1; then
+	echo "Source selection unexpectedly accepted missing input." >&2
+	exit 1
+fi
+
 test_dir=$(mktemp -d /tmp/rmu-lms-deploy-test.XXXXXX)
 env_file="$test_dir/.env"
 state_file="$test_dir/.deploy-state"

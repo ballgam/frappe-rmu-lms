@@ -20,7 +20,7 @@ Docker build cache.
 
 The server needs access to:
 
-- the Git repository from which it will fetch source updates;
+- the Git repository when you choose to pull source updates;
 - Docker Hub for the pinned Python, MariaDB, and Redis base images; and
 - Debian, PyPI, Yarn/npm, nodejs.org, and GitHub for the build dependencies.
 
@@ -38,9 +38,9 @@ docker version
 docker compose version
 ```
 
-For a private repository, configure that user's Git authentication first. The
-server checkout's tracked upstream branch is the source of updates; its remote
-does not have to be named `origin`.
+For a private repository, configure that user's Git authentication before
+choosing to pull updates. The server checkout's tracked upstream branch is the
+source of updates; its remote does not have to be named `origin`.
 
 Ask the Apache administrator to route the LMS HTTPS hostname to
 `127.0.0.1:8080` (or the local port selected at the first prompt). The proxy
@@ -58,7 +58,13 @@ Run this command from the checkout as its owner, **without** `sudo`:
 ./deployment/deploy.sh
 ```
 
-On the first run, enter the public LMS hostname (without `https://`), accept
+On each normal run, press Enter (or `y`) to fetch and fast-forward the tracked
+upstream branch, or enter `n` to build the commit already checked out on the
+server without contacting the Git remote. Either choice requires a clean
+checkout; commit local edits before deploying. If an upgrade is pending, the
+script resumes that revision without asking or fetching new source.
+
+On the first run, also enter the public LMS hostname (without `https://`), accept
 local port `8080` unless it is occupied, and choose an Administrator password.
 The script asks for sudo when it needs Docker or root-owned files. It creates
 `deployment/.env`, two root-only secrets under `/etc/rmu-lms/`, and an encrypted
@@ -66,8 +72,9 @@ local backup repository under `/var/backups/rmu-lms/`.
 
 On later runs, the same command:
 
-1. Refuses local source edits or a diverged branch, then fast-forwards from the
-   branch's configured upstream.
+1. Refuses local source edits, then either fast-forwards from the branch's
+   configured upstream or uses the current checked-out commit. A pull also
+   refuses a diverged branch.
 2. Builds and checks one local image tagged with the full source commit SHA.
 3. Takes and verifies an encrypted backup before starting a migration.
 4. Enters maintenance mode, migrates once, restarts the stack, and checks the
