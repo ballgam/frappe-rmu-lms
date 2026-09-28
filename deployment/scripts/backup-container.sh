@@ -20,6 +20,9 @@ if [[ ! -r "$RESTIC_PASSWORD_FILE" ]]; then
 fi
 
 staging_dir=$(mktemp -d /tmp/rmu-lms-backup.XXXXXX)
+if [[ $(id -u) -eq 0 ]]; then
+	chown frappe:frappe "$staging_dir"
+fi
 cleanup() {
 	rm -rf "$staging_dir"
 }
@@ -28,7 +31,11 @@ trap cleanup EXIT INT TERM
 cd "$bench_root"
 
 echo "Creating logical database and site-configuration backup for ${SITE_NAME}..."
-bench --site "$SITE_NAME" backup --backup-path "$staging_dir"
+if [[ $(id -u) -eq 0 ]]; then
+	runuser -u frappe -- bench --site "$SITE_NAME" backup --backup-path "$staging_dir"
+else
+	bench --site "$SITE_NAME" backup --backup-path "$staging_dir"
+fi
 
 if ! restic cat config >/dev/null 2>&1; then
 	if [[ -e "${RESTIC_REPOSITORY}/config" ]]; then
@@ -59,14 +66,14 @@ restic backup \
 echo "Checking repository metadata..."
 restic check
 
-echo "Applying retention: 7 daily, 4 weekly, 6 monthly snapshots..."
+echo "Applying retention: last 3, 7 daily, 4 weekly, 6 monthly snapshots..."
 restic forget \
 	--host "${SITE_NAME}" \
 	--tag "${BACKUP_TAG}" \
+	--keep-last 3 \
 	--keep-daily 7 \
 	--keep-weekly 4 \
 	--keep-monthly 6 \
 	--prune
 
 echo "Backup completed successfully."
-

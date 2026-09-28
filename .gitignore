@@ -26,3 +26,7 @@ sites/*/private/backups/
 # Production deployment secrets and local operator configuration
 deployment/.env
 deployment/secrets/
+deployment/.deploy-state
+deployment/.deploy-pending
+deployment/.deploy-state.*
+deployment/.deploy-pending.*

@@ -53,6 +53,7 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 frappe \
         procps \
         restic \
         tini \
+        util-linux \
         wait-for-it \
         xz-utils \
         xfonts-75dpi \
@@ -179,7 +180,7 @@ RUN set -eux; \
 
 FROM base AS runtime
 
-ARG IMAGE_SOURCE="https://github.com/RMU-Somalia/frappe-lms"
+ARG IMAGE_SOURCE="local-checkout"
 ARG IMAGE_REVISION="unknown"
 ARG IMAGE_VERSION="development"
 

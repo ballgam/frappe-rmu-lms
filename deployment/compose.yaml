@@ -7,9 +7,9 @@ x-logging: &default-logging
     max-file: "5"
 
 x-image: &application-image
-  image: ${LMS_IMAGE:?Set LMS_IMAGE to a private GHCR release tag or digest}
-  # Deployments pull explicitly before upgrades; backups must still run if GHCR is unavailable.
-  pull_policy: ${PULL_POLICY:-missing}
+  image: ${LMS_IMAGE:?Set LMS_IMAGE to a locally built rmu-lms image}
+  # The deploy script builds this image on the host. Never try a registry.
+  pull_policy: never
   init: true
   restart: unless-stopped
   logging: *default-logging
@@ -211,6 +211,8 @@ services:
     <<: *application-image
     profiles: ["backup"]
     restart: "no"
+    # Read the root-only Restic secret, then run Bench as the frappe user.
+    user: "0:0"
     entrypoint: ["/usr/local/sbin/rmu-lms-backup"]
     environment:
       SITE_NAME: ${SITE_NAME:?Set SITE_NAME to the production DNS name}
@@ -223,7 +225,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - type: bind
-        source: ${BACKUP_MOUNT:?Set BACKUP_MOUNT to the mounted remote filesystem}
+        source: ${BACKUP_DIR:-/var/backups/rmu-lms}
         target: /backup
     depends_on:
       configurator:

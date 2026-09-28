@@ -1,7 +1,7 @@
 [Unit]
-Description=Encrypted RMU LMS backup to remote filesystem
+Description=Encrypted RMU LMS backup to local Restic repository
 Documentation=file:/opt/rmu-lms/deployment/README.md
-After=docker.service network-online.target remote-fs.target
+After=docker.service network-online.target
 Wants=network-online.target
 Requires=docker.service
 

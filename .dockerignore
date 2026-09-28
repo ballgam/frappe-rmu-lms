@@ -30,5 +30,7 @@ sites/**
 apps/lms/deploy
 
 deployment/.env
+deployment/.deploy-state*
+deployment/.deploy-pending*
 deployment/secrets
 deployment/secrets/**

@@ -16,13 +16,14 @@ set -a
 source "$env_file"
 set +a
 
-if [[ -z "${BACKUP_MOUNT:-}" || "$BACKUP_MOUNT" == "/" || "$BACKUP_MOUNT" != /* ]]; then
-	echo "BACKUP_MOUNT must be a non-root absolute path." >&2
+backup_dir=${BACKUP_DIR:-/var/backups/rmu-lms}
+if [[ "$backup_dir" != /var/backups/rmu-lms ]]; then
+	echo "BACKUP_DIR must be /var/backups/rmu-lms." >&2
 	exit 1
 fi
 
-if ! mountpoint --quiet -- "$BACKUP_MOUNT"; then
-	echo "Remote backup filesystem is not mounted: ${BACKUP_MOUNT}" >&2
+if [[ ! -d "$backup_dir/restic" || ! -w "$backup_dir/restic" ]]; then
+	echo "Local Restic repository is not writable: ${backup_dir}/restic" >&2
 	exit 1
 fi
 
@@ -33,4 +34,3 @@ fi
 
 cd "$deployment_dir"
 exec docker compose --env-file "$env_file" --profile backup run --rm backup
-

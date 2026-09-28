@@ -21,12 +21,11 @@ printf '%s\n' 'stack-smoke-restic-password' > "${state_dir}/restic-password"
 chmod 0600 "${state_dir}/db-root-password" "${state_dir}/restic-password"
 
 export LMS_IMAGE="$image"
-export PULL_POLICY=never
 export SITE_NAME=smoke.localhost
 export FRONTEND_BIND=127.0.0.1:18080
 export DB_ROOT_PASSWORD_FILE="${state_dir}/db-root-password"
 export RESTIC_PASSWORD_FILE="${state_dir}/restic-password"
-export BACKUP_MOUNT="${state_dir}/backup"
+export BACKUP_DIR="${state_dir}/backup"
 export RESTIC_REPOSITORY=/backup/restic
 
 compose=(docker compose --project-name "$project_name" --file "$compose_file")
