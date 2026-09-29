@@ -198,3 +198,120 @@ forwarded host/protocol headers, and WebSocket proxy. If video packaging fails,
 inspect the long worker and run `ffmpeg -version`, `ffprobe -version`, and
 `packager --version` inside it. Never prune Docker volumes as a cleanup step:
 they contain the site, database, and persistent queue.
+
+## Remove the deployment completely
+
+There is no uninstall command in `deploy.sh`. Removal is a deliberate sequence.
+It deletes the site, database, persistent queue, secrets, and every local backup
+snapshot. These steps are not reversible.
+
+`deployment/destroy.sh` automates steps 2 through 5 below (and the Apache
+cleanup in step 6 with `--remove-apache`); the manual commands are documented so
+you can run or audit them yourself.
+
+```bash
+./deployment/destroy.sh                     # prompts, then removes the stack
+./deployment/destroy.sh --yes                # skip the typed confirmation
+./deployment/destroy.sh --remove-apache      # also remove the vhost and cert
+```
+
+Do them in order. `docker compose down` reads `deployment/.env` and the secret
+files, so remove those only after the stack is gone.
+
+### 1. Preserve anything you still need
+
+If any data must survive, copy a snapshot and the Restic password off this host
+now; once the backup directory is deleted the snapshots cannot be recovered.
+
+```bash
+# Linux
+sudo cp -a /var/backups/rmu-lms /media/offsite/rmu-lms-backups
+sudo cp -a /etc/rmu-lms/restic-password /media/offsite/rmu-lms-restic-password
+
+# macOS
+cp -a deployment/local-data/backups /Volumes/offsite/rmu-lms-backups
+cp -a deployment/local-data/secrets/restic-password /Volumes/offsite/rmu-lms-restic-password
+```
+
+Confirm the copy is readable before continuing. Also note the public hostname
+and the deployed image for the record.
+
+### 2. Stop and delete the stack and volumes
+
+Run from `deployment/`. Include both profiles so the `backup` and
+`backup-scheduler` containers are removed too (omit `sudo` on macOS):
+
+```bash
+sudo ./scripts/compose-cli.sh --env-file .env \
+  --profile backup --profile backup-scheduler down \
+  --volumes --remove-orphans
+```
+
+`--volumes` deletes the named volumes `rmu-lms_sites`, `rmu-lms_db-data`, and
+`rmu-lms_redis-queue-data`, which hold all site files, the database, and the
+persistent queue. Verify nothing remains:
+
+```bash
+docker volume ls | grep rmu-lms        # expect no output
+docker ps -a --filter name=rmu-lms     # expect no output
+```
+
+### 3. Remove the local images
+
+```bash
+docker rmi $(docker images --filter reference='rmu-lms*' -q) 2>/dev/null || true
+docker images | grep -E 'rmu-lms|ghcr.io'   # remove any former GHCR image shown
+```
+
+### 4. Remove the backup timer and units
+
+```bash
+sudo systemctl disable --now rmu-lms-backup.timer 2>/dev/null || true
+sudo rm -f /etc/systemd/system/rmu-lms-backup.service \
+           /etc/systemd/system/rmu-lms-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl reset-failed 2>/dev/null || true
+```
+
+### 5. Remove secrets, backups, and deployment state
+
+```bash
+# Linux
+sudo rm -rf /etc/rmu-lms
+sudo rm -rf /var/backups/rmu-lms
+
+# macOS
+rm -rf deployment/local-data
+
+# Both platforms
+rm -f deployment/.env deployment/.deploy-pending
+```
+
+### 6. Remove the Apache route and certificate
+
+Use the reverse of [apache/README.md](apache/README.md). Disable the vhost and
+revoke or delete the certificate:
+
+```bash
+# Ubuntu
+sudo a2dissite rmu-lms && sudo rm -f /etc/apache2/sites-available/rmu-lms.conf
+sudo certbot delete --cert-name LMS_DOMAIN
+sudo apachectl configtest && sudo systemctl reload apache2
+
+# RHEL
+sudo rm -f /etc/httpd/conf.d/rmu-lms.conf
+sudo certbot delete --cert-name LMS_DOMAIN
+sudo apachectl configtest && sudo systemctl reload httpd
+```
+
+Remove the public DNS record for `LMS_DOMAIN` and close ports 80/443 in the
+firewall if this host no longer serves anything.
+
+### 7. Remove the source checkout
+
+```bash
+sudo rm -rf /opt/rmu-lms
+```
+
+After this the host holds no RMU LMS data, images, containers, secrets, or
+configuration. Removing Docker Engine itself is out of scope and optional.
