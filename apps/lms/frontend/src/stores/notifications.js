@@ -33,6 +33,8 @@ export const notifications = createListResource({
 
 const refreshSidebarCount = () => {
 	getCachedResource('Unread Notifications Count')?.reload()
+	// The student navbar's count (useUnreadNotifications).
+	getCachedResource('Student Unread Notifications Count')?.reload()
 }
 
 export const markAsRead = createResource({

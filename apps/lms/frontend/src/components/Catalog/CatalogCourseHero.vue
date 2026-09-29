@@ -1,11 +1,7 @@
 <template>
 	<!-- The course page's masthead. Shares .catalog-hero with CatalogHero, so
-	     both pages carry the same gradient band and corner light.
-
-	     It also carries the nav row for the same reason the catalog's hero does:
-	     this route drops the app sidebar, so without these links the page is a
-	     dead end — on a phone especially, where the bottom nav goes with the
-	     sidebar. -->
+	     both pages carry the same gradient band and corner light. It sits under
+	     the student navbar, which carries the brand and account menu. -->
 	<section class="catalog-hero relative overflow-hidden">
 		<!-- The cover art as a wash rather than a picture. soft-light keeps the
 		     gradient's contrast, so the title below stays legible whatever the
@@ -20,54 +16,34 @@
 		<div
 			class="relative mx-auto w-full max-w-7xl px-5 pb-24 pt-5 sm:px-8 lg:pb-32"
 		>
-			<nav
-				class="flex items-center justify-between gap-4"
-				:aria-label="__('Course')"
-			>
+			<div class="flex items-center justify-between gap-4">
 				<router-link
-					:to="{ name: 'Home' }"
-					class="flex min-w-0 items-center gap-2 rounded-md text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+					:to="{ name: 'Courses' }"
+					class="-ms-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-p-sm font-medium text-[color:var(--catalog-hero-ink-muted)] transition-colors hover:bg-white/10 hover:text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
 				>
-					<img
-						v-if="brand.logo"
-						:src="brand.logo"
-						:alt="brand.name || __('Home')"
-						class="size-7 shrink-0 rounded"
-					/>
-					<span class="truncate text-p-base font-semibold">
-						{{ brand.name || __('Learning') }}
-					</span>
+					<span class="lucide-arrow-left size-4 rtl:rotate-180" />
+					{{ __('All courses') }}
 				</router-link>
-
-				<div class="flex shrink-0 items-center gap-2">
-					<router-link
-						:to="{ name: 'CourseCatalog' }"
-						class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-p-sm font-medium text-[color:var(--catalog-hero-ink-muted)] transition-colors hover:bg-white/10 hover:text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-					>
-						<span class="lucide-arrow-left size-4 rtl:rotate-180" />
-						<span class="hidden sm:inline">{{ __('Back to catalog') }}</span>
-					</router-link>
-					<!-- Instructors and moderators see the student page as students see
-					     it; this is their way across to the editor, dashboard and
-					     settings on /courses/:courseName. -->
-					<router-link
-						v-if="isAdmin && data"
-						:to="{ name: 'CourseDetail', params: { courseName: data.name } }"
-						class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-p-sm font-medium text-[color:var(--catalog-hero-ink)] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-						:style="{
-							borderColor: 'var(--catalog-hero-border)',
-							background: 'var(--catalog-hero-chip)',
-						}"
-					>
-						<span class="lucide-settings-2 size-4" />
-						{{ __('Manage course') }}
-					</router-link>
-				</div>
-			</nav>
+				<!-- Staff previewing in Student View: the way back to the editor,
+				     dashboard and settings. Without ?studentView the same URL
+				     renders the tabbed admin page. -->
+				<router-link
+					v-if="isAdmin && data"
+					:to="{ name: 'CourseDetail', params: { courseName: data.name } }"
+					class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-p-sm font-medium text-[color:var(--catalog-hero-ink)] transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+					:style="{
+						borderColor: 'var(--catalog-hero-border)',
+						background: 'var(--catalog-hero-chip)',
+					}"
+				>
+					<span class="lucide-settings-2 size-4" />
+					{{ __('Manage course') }}
+				</router-link>
+			</div>
 
 			<!-- Held at the hero's own height while the course loads, so the title
 			     landing does not shove the page down. -->
-			<div v-if="!data" class="mt-10 animate-pulse sm:mt-14">
+			<div v-if="!data" class="mt-6 animate-pulse sm:mt-10">
 				<div class="h-6 w-40 rounded-full bg-white/15" />
 				<div class="mt-5 h-11 w-full max-w-2xl rounded bg-white/15" />
 				<div class="mt-3 h-11 w-2/3 max-w-xl rounded bg-white/15" />
@@ -75,14 +51,14 @@
 				<div class="mt-8 h-5 w-72 rounded bg-white/10" />
 			</div>
 
-			<div v-else class="mt-10 sm:mt-14">
+			<div v-else class="mt-6 sm:mt-10">
 				<nav :aria-label="__('Breadcrumb')">
 					<ol
 						class="flex flex-wrap items-center gap-x-2 gap-y-1 text-p-sm text-[color:var(--catalog-hero-ink-muted)]"
 					>
 						<li>
 							<router-link
-								:to="{ name: 'CourseCatalog' }"
+								:to="{ name: 'Courses' }"
 								class="rounded transition-colors hover:text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
 							>
 								{{ __('Catalog') }}
@@ -92,7 +68,7 @@
 							<span aria-hidden="true">/</span>
 							<router-link
 								:to="{
-									name: 'CourseCatalog',
+									name: 'Courses',
 									query: { category: data.category },
 								}"
 								class="rounded transition-colors hover:text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
@@ -207,7 +183,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { sessionStore } from '@/stores/session'
 import { formatAmount, formatRating } from '@/utils'
 import UserAvatar from '@/components/UserAvatar.vue'
 import type { CourseDetails, Resource } from '@/types'
@@ -217,8 +192,6 @@ const props = defineProps<{
 	/** Adds the way across to the tabbed admin shell on /courses/:courseName. */
 	isAdmin?: boolean
 }>()
-
-const { brand } = sessionStore()
 
 const data = computed(() => props.course.data)
 

@@ -1,5 +1,12 @@
 <template>
-	<div class="w-full p-5">
+	<StudentLearning
+		v-if="studentUI && !isAdmin"
+		:myLiveClasses="myLiveClasses"
+		:streakInfo="streakInfo"
+		:subtitle="subtitle"
+		@open-streak="showStreakModal = true"
+	/>
+	<div v-else class="w-full p-5">
 		<div class="space-y-2">
 			<div class="flex items-center justify-between">
 				<h1 class="text-2xl-bold text-ink-gray-9">
@@ -53,6 +60,8 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { call, createResource, LoadingIndicator, usePageMeta } from 'frappe-ui'
 import { sessionStore } from '@/stores/session'
 import StudentHome from '@/pages/Home/StudentHome.vue'
+import StudentLearning from '@/pages/Home/StudentLearning.vue'
+import { useStudentExperience } from '@/composables/useStudentExperience'
 import AdminHome from '@/pages/Home/AdminHome.vue'
 import Streak from '@/pages/Home/Streak.vue'
 
@@ -61,6 +70,7 @@ const { brand } = sessionStore()
 const evalCount = ref(0)
 const currentTab = ref<'student' | 'instructor'>('student')
 const showStreakModal = ref(false)
+const { enabled: studentUI } = useStudentExperience()
 
 const fetchEvalCount = () => {
 	call('frappe.client.get_count', {

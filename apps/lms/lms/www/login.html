@@ -1,0 +1,2 @@
+{#- Frappe's own login page unless the new student experience is on (see login.py). -#}
+{% extends "lms/templates/login/lms_login.html" if lms_new_ui else "frappe/www/login.html" %}

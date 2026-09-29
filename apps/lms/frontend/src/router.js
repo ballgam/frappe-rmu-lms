@@ -23,6 +23,9 @@ async function shouldCapturePersona() {
 	return !courseCount
 }
 
+// `meta.adminOnly` marks staff screens. With the new student experience on,
+// they keep the sidebar shell (see App.vue) instead of the student navbar, so an
+// instructor who follows a link out of Student View lands in familiar chrome.
 const routes = [
 	{
 		path: '/',
@@ -30,34 +33,31 @@ const routes = [
 		component: () => import('@/pages/Home/Home.vue'),
 	},
 	{
+		// The classic list, or the catalog for the new student experience
+		// (see CoursesEntry). One URL either way.
 		path: '/courses',
 		name: 'Courses',
-		component: () => import('@/pages/Courses/Courses.vue'),
+		component: () => import('@/pages/Courses/CoursesEntry.vue'),
 	},
 	{
-		// The student-facing catalog, drawn full width without the app sidebar.
-		// A route of its own rather than a variant of /courses, so the design can
-		// be tried against real data without the live list depending on it.
+		// Where the catalog prototype lived while it was tried against real data.
 		path: '/catalog',
-		name: 'CourseCatalog',
-		component: () => import('@/pages/Courses/CourseCatalog.vue'),
-		meta: { noSidebar: true },
+		redirect: (to) => ({ name: 'Courses', query: to.query }),
 	},
 	{
-		// The catalog's course page, drawn the same way: full width, no app
-		// sidebar. A route of its own rather than a branch inside CourseDetail,
-		// so /courses/:courseName keeps the tabbed admin shell and everything
-		// already linking there is untouched.
 		path: '/catalog/courses/:courseName',
-		name: 'CatalogCourseDetail',
-		component: () => import('@/pages/Courses/CatalogCourseDetail.vue'),
-		meta: { noSidebar: true },
-		props: true,
+		redirect: (to) => ({
+			name: 'CourseDetail',
+			params: { courseName: to.params.courseName },
+			query: to.query,
+		}),
 	},
 	{
+		// The tabbed course page, or the catalog's course page for the new
+		// student experience (see CourseDetailEntry).
 		path: '/courses/:courseName',
 		name: 'CourseDetail',
-		component: () => import('@/pages/Courses/CourseDetail.vue'),
+		component: () => import('@/pages/Courses/CourseDetailEntry.vue'),
 		props: true,
 	},
 	{
@@ -153,12 +153,14 @@ const routes = [
 	{
 		path: '/job-openings/:job/applications',
 		name: 'JobApplications',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/JobApplications.vue'),
 		props: true,
 	},
 	{
 		path: '/job-opening/:jobName/edit',
 		name: 'JobForm',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/JobForm.vue'),
 		props: true,
 	},
@@ -170,11 +172,13 @@ const routes = [
 	{
 		path: '/quizzes',
 		name: 'Quizzes',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/Quizzes.vue'),
 	},
 	{
 		path: '/quizzes/:quizID',
 		name: 'QuizForm',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/QuizForm.vue'),
 		props: true,
 	},
@@ -187,12 +191,14 @@ const routes = [
 	{
 		path: '/quiz-submissions/:quizID',
 		name: 'QuizSubmissionList',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/QuizSubmissionList.vue'),
 		props: true,
 	},
 	{
 		path: '/quiz-submission/:submission',
 		name: 'QuizSubmission',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/QuizSubmission.vue'),
 		props: true,
 	},
@@ -210,6 +216,7 @@ const routes = [
 	{
 		path: '/assignments',
 		name: 'Assignments',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/Assignments.vue'),
 	},
 	{
@@ -221,22 +228,26 @@ const routes = [
 	{
 		path: '/assignment-submissions',
 		name: 'AssignmentSubmissionList',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/AssignmentSubmissionList.vue'),
 	},
 	{
 		path: '/persona',
 		name: 'PersonaForm',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/PersonaForm.vue'),
 	},
 	{
 		path: '/programming-exercises',
 		name: 'ProgrammingExercises',
+		meta: { adminOnly: true },
 		component: () =>
 			import('@/pages/ProgrammingExercises/ProgrammingExercises.vue'),
 	},
 	{
 		path: '/programming-exercises/submissions',
 		name: 'ProgrammingExerciseSubmissions',
+		meta: { adminOnly: true },
 		component: () =>
 			import(
 				'@/pages/ProgrammingExercises/ProgrammingExerciseSubmissions.vue'
@@ -255,17 +266,20 @@ const routes = [
 	{
 		path: '/data-import',
 		name: 'DataImportList',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/DataImport.vue'),
 	},
 	{
 		path: '/data-import/doctype/:doctype',
 		name: 'NewDataImport',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/DataImport.vue'),
 		props: true,
 	},
 	{
 		path: '/data-import/:importName',
 		name: 'DataImport',
+		meta: { adminOnly: true },
 		component: () => import('@/pages/DataImport.vue'),
 		props: true,
 	},
@@ -292,6 +306,16 @@ router.beforeEach(async (to, from, next) => {
 		}
 	} catch (error) {
 		isLoggedIn = false
+	}
+
+	// The layout (student shell or sidebar) depends on an LMS setting; wait for
+	// it so the first page renders in the right shell rather than swapping.
+	if (isLoggedIn) {
+		try {
+			await settings.promise
+		} catch (_) {
+			// Settings failing to load leaves the current UI in place.
+		}
 	}
 
 	if (!isLoggedIn) {

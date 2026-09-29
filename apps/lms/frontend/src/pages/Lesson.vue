@@ -1,6 +1,28 @@
 <template>
 	<div v-if="lesson.data" class="">
-		<PageHeader :breadcrumbs="breadcrumbs">
+		<!-- New student experience: a player bar in place of the page header.
+		     Every action it emits is this page's own (prev / next / zen). -->
+		<StudentLessonTopBar
+			v-if="studentUI"
+			:courseName="courseName"
+			:courseTitle="lesson.data.course_title"
+			:lessonTitle="lesson.data.title"
+			:progress="lessonProgress"
+			:hasPrev="hasPrev"
+			:hasNext="hasNext"
+			:curriculumOpen="isMobile ? showChapters : curriculumOpen"
+			:canZen="canGoZen()"
+			:previewQuery="studentViewQuery"
+			@prev="goPrev()"
+			@next="goNext()"
+			@zen="goFullScreen()"
+			@toggle-curriculum="toggleCurriculum()"
+		>
+			<template #actions>
+				<CertificationLinks :courseName="courseName" />
+			</template>
+		</StudentLessonTopBar>
+		<PageHeader v-else :breadcrumbs="breadcrumbs">
 			<template #actions>
 				<CertificationLinks :courseName="courseName" />
 				<router-link
@@ -18,7 +40,7 @@
 		</PageHeader>
 
 		<div
-			v-if="isMobile && lessonTotal"
+			v-if="isMobile && lessonTotal && !studentUI"
 			class="flex items-center gap-2 border-b bg-surface-base px-3 py-2"
 		>
 			<Button
@@ -50,7 +72,7 @@
 			</Button>
 		</div>
 
-		<div class="grid md:grid-cols-[70%,30%] sm:h-[94vh]">
+		<div :class="gridClass">
 			<div v-if="lesson.data.no_preview" class="sm:border-e">
 				<div class="shadow rounded-md w-3/4 mt-10 mx-auto text-center p-4">
 					<div class="flex items-center justify-center mt-4 gap-x-2">
@@ -131,7 +153,7 @@
 							</div>
 
 							<div
-								v-if="!zenModeEnabled && !isMobile"
+								v-if="!zenModeEnabled && !isMobile && !studentUI"
 								class="flex items-center gap-x-2 mt-2 md:mt-0"
 							>
 								<Tooltip v-if="canGoZen()" :text="__('Zen Mode')">
@@ -268,6 +290,44 @@
 								:quizId="lesson.data.quiz_id"
 							/>
 						</div>
+
+						<!-- New student experience: move on from the end of the lesson,
+						     not only from the top bar. -->
+						<div
+							v-if="studentUI && !zenModeEnabled"
+							class="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-outline-gray-2 pt-6"
+						>
+							<button
+								v-if="lesson.data.prev"
+								type="button"
+								class="sx-focus inline-flex items-center gap-2 rounded-lg border border-outline-gray-2 px-4 py-2.5 text-p-sm font-medium text-ink-gray-8 hover:bg-surface-gray-2"
+								@click="switchLesson('prev')"
+							>
+								<span class="lucide-chevron-left size-4 rtl:rotate-180" />
+								{{ __('Previous') }}
+							</button>
+							<span v-else />
+							<button
+								v-if="lesson.data.next"
+								type="button"
+								class="sx-btn-primary sx-focus inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-p-sm font-semibold"
+								@click="switchLesson('next')"
+							>
+								{{ __('Next lesson') }}
+								<span class="lucide-chevron-right size-4 rtl:rotate-180" />
+							</button>
+							<router-link
+								v-else
+								:to="{
+									name: 'CourseDetail',
+									params: { courseName: courseName },
+									query: studentViewQuery,
+								}"
+								class="sx-btn-primary sx-focus inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-p-sm font-semibold"
+							>
+								{{ __('Back to course') }}
+							</router-link>
+						</div>
 					</div>
 					<div
 						v-if="lesson.data && (allowDiscussions || tabs.length > 1)"
@@ -299,7 +359,15 @@
 					</div>
 				</div>
 			</div>
-			<aside v-if="!isMobile" class="sticky top-10 h-[94vh]">
+			<aside
+				v-if="!isMobile && (!studentUI || curriculumOpen)"
+				:class="
+					studentUI
+						? 'sx-player-curriculum sticky top-14 border-s border-outline-gray-2 bg-surface-white'
+						: 'sticky top-10 h-[94vh]'
+				"
+				:aria-label="studentUI ? __('Course content') : undefined"
+			>
 				<StudentLessonSidebar
 					:courseName="courseName"
 					:courseTitle="lesson.data.course_title"
@@ -311,7 +379,7 @@
 		</div>
 
 		<div
-			v-if="isMobile"
+			v-if="isMobile && !studentUI"
 			class="pointer-events-none sticky bottom-4 z-10 flex justify-end px-4"
 		>
 			<Button
@@ -404,6 +472,8 @@ import Notes from '@/components/Notes/Notes.vue'
 import InlineLessonMenu from '@/components/Notes/InlineLessonMenu.vue'
 import { getLmsRoute } from '@/utils/basePath'
 import { provideStudentView } from '@/composables/useStudentView'
+import { useStudentExperience } from '@/composables/useStudentExperience'
+import StudentLessonTopBar from '@/components/StudentLesson/StudentLessonTopBar.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -438,6 +508,40 @@ const { isMobile } = useScreenSize()
 const showChapters = ref(false)
 let timerInterval = null
 
+// The new student experience only changes this page's chrome (player bar,
+// collapsible curriculum); the lesson logic below is shared by both layouts.
+const { enabled: studentUI } = useStudentExperience()
+
+const CURRICULUM_KEY = 'lms-player-curriculum-open'
+const readCurriculumOpen = () => {
+	try {
+		return localStorage.getItem(CURRICULUM_KEY) !== '0'
+	} catch {
+		return true
+	}
+}
+const curriculumOpen = ref(readCurriculumOpen())
+
+const toggleCurriculum = () => {
+	if (isMobile.value) {
+		showChapters.value = !showChapters.value
+		return
+	}
+	curriculumOpen.value = !curriculumOpen.value
+	try {
+		localStorage.setItem(CURRICULUM_KEY, curriculumOpen.value ? '1' : '0')
+	} catch {
+		// Private mode: the drawer just forgets its state.
+	}
+}
+
+const gridClass = computed(() => {
+	if (!studentUI.value) return 'grid md:grid-cols-[70%,30%] sm:h-[94vh]'
+	return curriculumOpen.value && !isMobile.value
+		? 'grid md:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]'
+		: 'grid grid-cols-1'
+})
+
 const tabs = ref([])
 
 const props = defineProps({
@@ -463,7 +567,8 @@ onMounted(() => {
 	startTimer()
 	// Keep the app sidebar open for admins/instructors so they can navigate
 	// while reviewing; only collapse it for students to maximise reading space.
-	if (!isCourseAdmin()) {
+	// The student shell has no app sidebar to collapse.
+	if (!isCourseAdmin() && !studentUI.value) {
 		sidebarStore.isSidebarCollapsed = true
 		collapsedByLesson = true
 	}

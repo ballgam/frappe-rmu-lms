@@ -131,6 +131,13 @@ const tabsStructure = computed(() => {
 												'If checked, users will not be able to install the application as a Progressive Web App.',
 										},
 										{
+											label: 'Enable new student experience',
+											name: 'enable_new_student_ui',
+											type: 'checkbox',
+											description:
+												'If enabled, students and guests see the redesigned catalog, course, lesson, My learning and login pages. Instructors and admins keep the current interface.',
+										},
+										{
 											label: 'Send calendar invite for evaluations',
 											name: 'send_calendar_invite_for_evaluations',
 											description:

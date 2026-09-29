@@ -1767,6 +1767,8 @@ def get_lms_settings():
 		"enforce_quiz_completion",
 		"enforce_assignment_completion",
 		"allowed_embed_hosts",
+		"enable_new_student_ui",
+		"disable_signup",
 	]
 
 	settings = frappe._dict()

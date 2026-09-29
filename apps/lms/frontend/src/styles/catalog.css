@@ -1,59 +1,25 @@
 /* Course catalog palette.
  *
- * Scoped to `.lms-catalog` rather than `:root` on purpose: this is one page's
- * brand treatment, and a variable defined on the root would be inherited by
- * every other page whether or not it asked for it.
- *
- * Built on UN Blue (#009EDB). White on that blue is ~2.9:1, which fails AA for
- * anything but large display text, so the blue is used as accent and chip fill
- * and the hero gradient runs to a darkened #00629B (~6.3:1 with white) instead.
- * Surfaces, ink and outlines outside the hero stay on the frappe-ui tokens, so
- * the grid follows the theme on its own.
+ * The values live in student-theme.css as `--sx-*` (with their dark-mode
+ * overrides), shared by every student surface. The catalog's own names are
+ * kept as aliases so its components and scoped styles need no rewrite.
  */
 .lms-catalog {
-	/* Hero */
-	--catalog-hero-from: #0a2540;
-	--catalog-hero-via: #084b74;
-	--catalog-hero-to: #00629b;
-	--catalog-hero-ink: #ffffff;
-	--catalog-hero-ink-muted: rgb(255 255 255 / 0.76);
-	--catalog-hero-border: rgb(255 255 255 / 0.22);
-	--catalog-hero-chip: rgb(255 255 255 / 0.12);
+	--catalog-hero-from: var(--sx-hero-from);
+	--catalog-hero-via: var(--sx-hero-via);
+	--catalog-hero-to: var(--sx-hero-to);
+	--catalog-hero-ink: var(--sx-hero-ink);
+	--catalog-hero-ink-muted: var(--sx-hero-ink-muted);
+	--catalog-hero-border: var(--sx-hero-border);
+	--catalog-hero-chip: var(--sx-hero-chip);
 
-	/* Brand */
-	--catalog-primary: #009edb;
-	/* The blue as text, dark enough to read on a light surface. */
-	--catalog-primary-ink: #00629b;
-	--catalog-primary-soft: #e7f6fd;
-	--catalog-accent: #f2a900;
+	--catalog-primary: var(--sx-primary);
+	--catalog-primary-ink: var(--sx-primary-ink);
+	--catalog-primary-soft: var(--sx-primary-soft);
+	--catalog-accent: var(--sx-accent);
 
-	/* Cards. Tinted with the hero navy rather than neutral black, so the
-	   elevation reads as part of the same palette. */
-	--catalog-shadow-card: 0 1px 2px rgb(10 37 64 / 0.06),
-		0 8px 24px -12px rgb(10 37 64 / 0.18);
-	--catalog-shadow-card-hover: 0 2px 4px rgb(10 37 64 / 0.08),
-		0 16px 40px -16px rgb(10 37 64 / 0.28);
-}
-
-/* Hand-authored, because a scoped palette gets none of the token system's
-   dark-mode handling. The hero is already dark, so it deepens rather than
-   inverts; what has to change is every value that assumed a light surface
-   under it. */
-[data-theme='dark'] .lms-catalog {
-	--catalog-hero-from: #04121f;
-	--catalog-hero-via: #06304b;
-	--catalog-hero-to: #004b78;
-	--catalog-hero-ink-muted: rgb(255 255 255 / 0.7);
-	--catalog-hero-border: rgb(255 255 255 / 0.16);
-
-	/* #00629B on a dark card is unreadable; lift the blue instead of dimming
-	   the text behind it. */
-	--catalog-primary-ink: #7cc9ec;
-	--catalog-primary-soft: rgb(0 158 219 / 0.16);
-
-	--catalog-shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
-	--catalog-shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.55),
-		0 16px 40px -16px rgb(0 0 0 / 0.8);
+	--catalog-shadow-card: var(--sx-shadow-card);
+	--catalog-shadow-card-hover: var(--sx-shadow-card-hover);
 }
 
 /* The masthead gradient, shared by the catalog and the course page. It lived in

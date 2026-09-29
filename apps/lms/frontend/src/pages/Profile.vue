@@ -1,7 +1,9 @@
 <template>
 	<NoPermission v-if="!$user.data" />
-	<div v-else-if="profile.data">
-		<PageHeader :breadcrumbs="breadcrumbs">
+	<div v-else-if="profile.data" :class="{ 'lms-catalog': studentUI }">
+		<!-- The student navbar replaces the page header in the new student
+		     experience; the cover band below takes the brand gradient. -->
+		<PageHeader v-if="!studentUI" :breadcrumbs="breadcrumbs">
 			<template #actions>
 				<HeaderButton
 					v-if="isSessionUser()"
@@ -21,7 +23,11 @@
 			/>
 			<div
 				v-else
-				:class="{ 'bg-surface-gray-2': !profile.data.cover_image }"
+				:class="
+					studentUI
+						? 'catalog-hero relative overflow-hidden'
+						: { 'bg-surface-gray-2': !profile.data.cover_image }
+				"
 				class="h-[130px] w-full"
 			></div>
 			<div
@@ -181,8 +187,10 @@ import NoPermission from '@/components/NoPermission.vue'
 import NotFound from '@/pages/NotFound.vue'
 import EditProfile from '@/components/Modals/EditProfile.vue'
 import EditCoverImage from '@/components/Modals/EditCoverImage.vue'
+import { useStudentExperience } from '@/composables/useStudentExperience'
 
 const { user, brand } = sessionStore()
+const { enabled: studentUI } = useStudentExperience()
 const $user = inject('$user')
 const route = useRoute()
 const router = useRouter()

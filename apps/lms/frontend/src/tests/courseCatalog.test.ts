@@ -119,7 +119,10 @@ vi.mock('@/stores/session', () => ({
 	sessionStore: () => ({ brand: {}, isLoggedIn: loggedIn.value }),
 }))
 vi.mock('@/utils', () => ({ canCreateCourse: () => true }))
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({
+	useRouter: () => ({ push: vi.fn() }),
+	useRoute: () => ({ query: {} }),
+}))
 
 const stub = (template: string) => ({ default: { template } })
 vi.mock('@/components/Catalog/CatalogCourseCard.vue', () =>

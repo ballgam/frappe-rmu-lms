@@ -1,6 +1,6 @@
 <template>
 	<router-link
-		:to="{ name: 'CatalogCourseDetail', params: { courseName: course.name } }"
+		:to="{ name: 'CourseDetail', params: { courseName: course.name } }"
 		class="catalog-course-card-link group block h-full rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--catalog-primary)] focus-visible:ring-offset-2"
 	>
 		<article

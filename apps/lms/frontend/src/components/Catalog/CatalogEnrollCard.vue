@@ -60,11 +60,8 @@
 				</div>
 
 				<router-link
-					v-else-if="data?.paid_course && !isAdmin"
-					:to="{
-						name: 'Billing',
-						params: { type: 'course', name: data.name },
-					}"
+					v-else-if="cta === 'billing'"
+					:to="billingRoute"
 					class="block"
 				>
 					<Button variant="solid" size="lg" class="w-full">
@@ -76,7 +73,7 @@
 				</router-link>
 
 				<Badge
-					v-else-if="data?.disable_self_learning && !isAdmin"
+					v-else-if="cta === 'contact_admin'"
 					theme="blue"
 					size="lg"
 				>
@@ -84,12 +81,12 @@
 				</Badge>
 
 				<Button
-					v-else-if="!isAdmin"
+					v-else-if="cta === 'enroll'"
 					variant="solid"
 					size="lg"
 					class="w-full"
 					:loading="enrolling"
-					@click="enrollStudent()"
+					@click="enroll()"
 				>
 					<template #prefix>
 						<span class="lucide-book-text size-4" />
@@ -98,7 +95,7 @@
 				</Button>
 
 				<Button
-					v-if="canGetCertificate"
+					v-if="certificateAvailable"
 					variant="subtle"
 					size="lg"
 					class="mt-2 w-full"
@@ -155,22 +152,15 @@
  * The catalog's enrolment card.
  *
  * Same call-to-action chain, enrolment call and certificate flow as
- * CourseCardOverlay, restyled for the catalog. Two additions the mock has and
- * that card does not: a progress bar (CourseCardOverlay only reads
- * membership.progress to gate the certificate button) and a share control.
+ * CourseCardOverlay (both come from useCourseEnrollment), restyled for the
+ * catalog, plus a share control.
  */
-import { computed, inject, ref } from 'vue'
-import { Badge, Button, call, createResource, toast } from 'frappe-ui'
-import { useRouter } from 'vue-router'
-import { useTelemetry } from 'frappe-ui/frappe'
+import { computed } from 'vue'
+import { Badge, Button, toast } from 'frappe-ui'
 import CertificationLinks from '@/components/CertificationLinks.vue'
 import VideoPreview from '@/components/VideoPreview.vue'
-import type {
-	CourseDetails,
-	CourseInstructorInfo,
-	Resource,
-	SessionUser,
-} from '@/types'
+import { useCourseEnrollment } from '@/composables/useCourseEnrollment'
+import type { CourseDetails, Resource } from '@/types'
 
 const props = defineProps<{
 	/** The resource, not its data: every branch below reads course.data
@@ -178,52 +168,22 @@ const props = defineProps<{
 	course: Resource<CourseDetails | null>
 }>()
 
-const router = useRouter()
-const user = inject<SessionUser>('$user')!
 const readOnlyMode = (window as Window & { read_only_mode?: boolean })
 	.read_only_mode
-const { capture } = useTelemetry()
-
-const enrolling = ref(false)
 
 const data = computed(() => props.course.data)
 
-const isAdmin = computed<boolean>(() => {
-	if (user.data?.is_moderator) return true
-	return (data.value?.instructors || []).some(
-		(instructor: CourseInstructorInfo) => instructor.name === user.data?.name
-	)
-})
-
-// current_lesson is a "<chapter>-<lesson>" index, not a docname.
-const continueRoute = computed(() => {
-	const [chapterNumber, lessonNumber] = (
-		data.value?.current_lesson || ''
-	).split('-')
-	return {
-		name: 'Lesson',
-		params: {
-			courseName: data.value?.name,
-			chapterNumber: chapterNumber || 1,
-			lessonNumber: lessonNumber || 1,
-		},
-	}
-})
-
-const priceLabel = computed<string>(() => {
-	if (data.value?.paid_course) return data.value?.price || ''
-	return __('Free')
-})
-
-// Bucketed social proof: an exact count reads as precision the number does not
-// have once it is large.
-const enrolledLabel = computed<string>(() => {
-	const n = data.value?.enrollments ?? 0
-	if (!n) return ''
-	if (n < 50) return String(n)
-	const tier = n < 1000 ? 50 : 100
-	return `${Math.floor(n / tier) * tier}+`
-})
+const {
+	cta,
+	continueRoute,
+	billingRoute,
+	priceLabel,
+	enrolledLabel,
+	certificateAvailable,
+	enrolling,
+	enroll,
+	fetchCertificate,
+} = useCourseEnrollment(props.course, { reloadAfterEnroll: true })
 
 const includes = computed<{ icon: string; label: string }[]>(() => {
 	const course = data.value
@@ -264,72 +224,6 @@ const includes = computed<{ icon: string; label: string }[]>(() => {
 })
 
 const hasCourseStats = computed<boolean>(() => includes.value.length > 0)
-
-const canGetCertificate = computed<boolean>(() =>
-	Boolean(
-		data.value?.enable_certification &&
-			(data.value?.membership?.progress ?? 0) >= 100
-	)
-)
-
-async function enrollStudent(): Promise<void> {
-	if (!user.data) {
-		toast.warning(__('You need to login first to enroll for this course'))
-		setTimeout(() => {
-			window.location.href = `/login?redirect-to=${window.location.pathname}`
-		}, 500)
-		return
-	}
-	const courseName = data.value?.name
-	if (!courseName) return
-
-	enrolling.value = true
-	try {
-		await call('frappe.client.insert', {
-			doc: {
-				doctype: 'LMS Enrollment',
-				course: courseName,
-				member: user.data.name,
-			},
-		})
-		capture('enrolled_in_course', { course: courseName })
-		toast.success(__('You have been enrolled in this course'))
-		// CourseCardOverlay never reloads, because it always navigates away —
-		// which leaves this card reading "Enroll now" for anyone who comes back.
-		await props.course.reload()
-		router.push({
-			name: 'Lesson',
-			params: { courseName, chapterNumber: 1, lessonNumber: 1 },
-		})
-	} catch (err) {
-		const error = err as { messages?: string[] } | string
-		const msg =
-			typeof error === 'string' ? error : error.messages?.[0] ?? 'Error'
-		toast.warning(__(msg))
-		console.error(err)
-	} finally {
-		enrolling.value = false
-	}
-}
-
-const certificate = createResource({
-	url: 'lms.lms.doctype.lms_certificate.lms_certificate.create_certificate',
-	makeParams(values: { course?: string }) {
-		return { course: values.course }
-	},
-	onSuccess(certificateData: { name: string; template: string }) {
-		window.open(
-			`/api/method/frappe.utils.print_format.download_pdf?doctype=LMS+Certificate&name=${
-				certificateData.name
-			}&format=${encodeURIComponent(certificateData.template)}`,
-			'_blank'
-		)
-	},
-}) as Resource<{ name: string; template: string } | null>
-
-function fetchCertificate(): void {
-	certificate.submit({ course: data.value?.name, member: user.data?.name })
-}
 
 // navigator.share is absent on desktop browsers and navigator.clipboard is
 // absent outside a secure context, so neither can be assumed. A dismissed

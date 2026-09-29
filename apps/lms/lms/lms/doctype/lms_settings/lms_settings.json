@@ -11,6 +11,7 @@
 		"send_calendar_invite_for_evaluations",
 		"column_break_zdel",
 		"disable_pwa",
+		"enable_new_student_ui",
 		"default_home",
 		"persona_captured",
 		"demo_data_present",
@@ -488,6 +489,13 @@
 			"label": "Disable PWA"
 		},
 		{
+			"default": "0",
+			"description": "Show students and guests the redesigned course catalog, course page, lesson player, My learning and login pages. Instructors and admins keep the current interface.",
+			"fieldname": "enable_new_student_ui",
+			"fieldtype": "Check",
+			"label": "Enable New Student Experience"
+		},
+		{
 			"fieldname": "send_notification_for_published_courses",
 			"fieldtype": "Select",
 			"label": "Send Notification for Published Courses",
@@ -660,7 +668,7 @@
 	"index_web_pages_for_search": 1,
 	"issingle": 1,
 	"links": [],
-	"modified": "2026-08-06 00:00:00.000000",
+	"modified": "2026-09-29 00:00:00.000000",
 	"modified_by": "Administrator",
 	"module": "LMS",
 	"name": "LMS Settings",

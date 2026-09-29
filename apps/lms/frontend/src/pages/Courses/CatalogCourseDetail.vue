@@ -236,7 +236,7 @@ const isAdmin = computed<boolean>(() => {
 // unpublished course reaching a student here means the URL was guessed.
 watch(course, () => {
 	if (!isAdmin.value && !course.data?.published && !course.data?.upcoming) {
-		router.push({ name: 'CourseCatalog' })
+		router.push({ name: 'Courses' })
 	}
 })
 

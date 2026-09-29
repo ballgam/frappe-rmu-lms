@@ -1,11 +1,7 @@
 <template>
 	<!-- The catalog's masthead: a gradient band that runs the full width of the
-	     page, since this route drops the app sidebar.
-
-	     That is also why it carries a nav bar. Without the sidebar there is no
-	     other way back into the app and no account menu, so the hero has to
-	     supply both or the page is a dead end — on a phone especially, where
-	     the bottom nav goes with the sidebar.
+	     page, under the student navbar (which carries the brand, search and
+	     account menu).
 
 	     The UN treatment keeps the navy band but tightens the vertical rhythm
 	     and layers three faint marks over the gradient: a longitude grid (the
@@ -22,52 +18,13 @@
 		<div
 			class="relative mx-auto w-full max-w-7xl px-5 pb-16 pt-5 sm:px-8 sm:pb-20"
 		>
-			<nav
-				class="flex items-center justify-between gap-4"
-				:aria-label="__('Catalog')"
-			>
-				<router-link
-					:to="{ name: 'Home' }"
-					class="group flex min-w-0 items-center gap-3 rounded-xl text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-				>
-					<!-- The blue lockup needs a light ground to read on the navy
-					     band, so it sits on a white tile rather than floating. -->
-					<span
-						class="grid shrink-0 place-items-center rounded-xl bg-white p-1.5 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] transition-transform duration-200 group-hover:scale-[1.04]"
-					>
-						<img
-							:src="UN_LOGO"
-							:alt="brand.name || __('Home')"
-							class="h-6 w-auto sm:h-7"
-						/>
-					</span>
-					<span class="flex min-w-0 flex-col leading-tight">
-						<span
-							class="truncate text-p-sm font-medium tracking-wide text-[color:var(--catalog-hero-ink)]"
-						>
-							{{ brand.name || __('Learning') }}
-						</span>
-						<span
-							class="text-[0.7rem] uppercase tracking-[0.22em] text-[color:var(--catalog-hero-ink-muted)]"
-						>
-							{{ __('Learning') }}
-						</span>
-					</span>
-				</router-link>
+			<!-- Page actions (e.g. staff's Create menu). Brand and account links
+			     live in the student navbar above the hero. -->
+			<div v-if="$slots.actions" class="flex justify-end">
+				<slot name="actions" />
+			</div>
 
-				<div class="flex shrink-0 items-center gap-2">
-					<router-link
-						:to="{ name: 'Home' }"
-						class="hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-p-sm font-medium text-[color:var(--catalog-hero-ink-muted)] transition-colors hover:bg-white/10 hover:text-[color:var(--catalog-hero-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:inline-flex"
-					>
-						<span class="lucide-arrow-left size-4 rtl:rotate-180" />
-						{{ __('Back to Learning') }}
-					</router-link>
-					<slot name="actions" />
-				</div>
-			</nav>
-
-			<div class="mt-10 sm:mt-14">
+			<div class="mt-4 sm:mt-8">
 				<!-- Editorial kicker: a short UN-blue rule instead of the old
 				     pill chip, so the heading can carry the whole first beat. -->
 				<div class="flex items-center gap-3">
@@ -141,8 +98,6 @@
 </template>
 
 <script setup lang="ts">
-import { sessionStore } from '@/stores/session'
-
 defineProps<{
 	search: string
 	filtersOpen: boolean
@@ -155,10 +110,8 @@ const emit = defineEmits<{
 	'toggle-filters': []
 }>()
 
-const { brand } = sessionStore()
-
-// The UN Somalia lockup, served from the frontend's public folder. Blue and
-// transparent, so it is meant for a light ground (see the white nav tile).
+// The UN Somalia lockup, served from the frontend's public folder; used here
+// only as the faint watermark over the band.
 const UN_LOGO = '/assets/lms/frontend/un-somalia-logo.png'
 </script>
 

@@ -1,0 +1,92 @@
+/* Student experience palette (LMS Settings › Enable new student experience).
+ *
+ * The values are the catalog's UN Blue palette, lifted to the root so every
+ * student surface shares them: the navbar, the lesson player, and the lesson
+ * blocks. Those blocks (quiz, video) are separate Vue app roots and
+ * assignments render in an iframe, so a class on a wrapper div never reaches
+ * them; an attribute on <html> does. App.vue sets `data-student-ui` on <html>
+ * only while the student experience is on, and any rule here that restyles a
+ * component staff also see must be scoped under `[data-student-ui]`.
+ *
+ * The `--sx-*` variables themselves are defined unconditionally: the names are
+ * prefixed, so they change nothing that does not ask for them.
+ * `.lms-catalog` aliases its own names onto these.
+ */
+:root {
+	--sx-hero-from: #0a2540;
+	--sx-hero-via: #084b74;
+	--sx-hero-to: #00629b;
+	--sx-hero-ink: #ffffff;
+	--sx-hero-ink-muted: rgb(255 255 255 / 0.76);
+	--sx-hero-border: rgb(255 255 255 / 0.22);
+	--sx-hero-chip: rgb(255 255 255 / 0.12);
+
+	/* UN Blue. White on it is ~2.9:1, so it is an accent and fill colour only;
+	   text and solid buttons use the darker ink (~6.3:1 with white). */
+	--sx-primary: #009edb;
+	--sx-primary-ink: #00629b;
+	--sx-primary-ink-hover: #004e7c;
+	--sx-primary-soft: #e7f6fd;
+	--sx-accent: #f2a900;
+
+	--sx-shadow-card: 0 1px 2px rgb(10 37 64 / 0.06),
+		0 8px 24px -12px rgb(10 37 64 / 0.18);
+	--sx-shadow-card-hover: 0 2px 4px rgb(10 37 64 / 0.08),
+		0 16px 40px -16px rgb(10 37 64 / 0.28);
+	--sx-shadow-bar: 0 1px 0 rgb(10 37 64 / 0.06),
+		0 4px 16px -8px rgb(10 37 64 / 0.12);
+
+	--sx-navbar-height: 4rem;
+}
+
+[data-theme='dark'] {
+	--sx-hero-from: #04121f;
+	--sx-hero-via: #06304b;
+	--sx-hero-to: #004b78;
+	--sx-hero-ink-muted: rgb(255 255 255 / 0.7);
+	--sx-hero-border: rgb(255 255 255 / 0.16);
+
+	/* #00629B on a dark surface is unreadable; lift the blue instead. */
+	--sx-primary-ink: #7cc9ec;
+	--sx-primary-ink-hover: #a6dbf3;
+	--sx-primary-soft: rgb(0 158 219 / 0.16);
+
+	--sx-shadow-card: 0 1px 2px rgb(0 0 0 / 0.5);
+	--sx-shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.55),
+		0 16px 40px -16px rgb(0 0 0 / 0.8);
+	--sx-shadow-bar: 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* Solid call-to-action button for student surfaces. Text colour flips with the
+   theme so the fill stays legible in both: dark ink on the lifted blue. */
+.sx-btn-primary {
+	background: var(--sx-primary-ink);
+	color: #ffffff;
+}
+.sx-btn-primary:hover {
+	background: var(--sx-primary-ink-hover);
+}
+[data-theme='dark'] .sx-btn-primary {
+	color: #04121f;
+}
+
+.sx-navbar {
+	box-shadow: var(--sx-shadow-bar);
+}
+
+.sx-link-active {
+	color: var(--sx-primary-ink);
+}
+
+/* Lesson player: the curriculum drawer fills the height under the navbar and
+   the player bar (h-14), and scrolls on its own. */
+.sx-player-curriculum {
+	height: calc(100dvh - var(--sx-navbar-height) - 3.5rem);
+	overflow-y: auto;
+}
+
+/* Focus ring in the brand colour, for the student shell's own controls. */
+.sx-focus:focus-visible {
+	outline: 2px solid var(--sx-primary);
+	outline-offset: 2px;
+}

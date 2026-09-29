@@ -144,8 +144,8 @@
 
 <script setup>
 import { Button, Dropdown, usePageMeta } from 'frappe-ui'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { sessionStore } from '@/stores/session'
 import { canCreateCourse } from '@/utils'
 import { useCourseCatalog } from '@/composables/useCourseCatalog'
@@ -174,6 +174,7 @@ const {
 
 const { brand, isLoggedIn } = sessionStore()
 const router = useRouter()
+const route = useRoute()
 const showCourseModal = ref(false)
 const showCourseImportModal = ref(false)
 const filtersOpen = ref(false)
@@ -202,6 +203,19 @@ const onSearch = (value) => {
 onUnmounted(() => {
 	clearTimeout(searchTimer)
 })
+
+// The student navbar's search pushes ?title= onto this same route, which does
+// not remount the page, so pick the new term up here.
+watch(
+	() => route.query.title,
+	(value) => {
+		const next = typeof value === 'string' ? value : ''
+		if (next === title.value) return
+		title.value = next
+		clearTimeout(searchTimer)
+		updateCourses()
+	}
+)
 
 const onCategory = (value) => {
 	currentCategory.value = value
