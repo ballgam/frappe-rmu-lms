@@ -5,6 +5,10 @@
  * the student palette. The values mirror the SPA's --sx-* tokens
  * (frontend/src/styles/student-theme.css); the SPA stylesheet is not loaded on
  * this server-rendered page, so they are repeated here.
+ *
+ * The form column takes its cues from the RMU auth screens: the logo sits at
+ * the top of the form, labels are small and uppercase, fields are filled and
+ * rounded, and the primary action is a full-width pill.
  */
 :root {
 	--lms-hero-from: #0a2540;
@@ -20,6 +24,9 @@
 	--lms-ink: #0f172a;
 	--lms-ink-muted: #5b6474;
 	--lms-outline: #dfe3ea;
+	--lms-field-bg: #f9fafb;
+	--lms-field-border: #e5e7eb;
+	--lms-label: #374151;
 }
 
 [data-theme='dark'] {
@@ -34,6 +41,9 @@
 	--lms-ink: #eef1f5;
 	--lms-ink-muted: #a3acb9;
 	--lms-outline: #2c313a;
+	--lms-field-bg: #101318;
+	--lms-field-border: #2c313a;
+	--lms-label: #cbd5e1;
 }
 
 /* The page takes the whole viewport. Fixed rather than in flow so web.html's
@@ -104,22 +114,8 @@
 	display: flex;
 	height: 100%;
 	flex-direction: column;
-	justify-content: space-between;
+	justify-content: flex-end;
 	padding: 3rem 3.5rem;
-}
-
-.lms-login-brand-logo {
-	display: inline-flex;
-	align-self: flex-start;
-	border-radius: 0.875rem;
-	background: #ffffff;
-	padding: 0.5rem 0.75rem;
-	box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.6);
-}
-
-.lms-login-brand-logo img {
-	height: 2.25rem;
-	width: auto;
 }
 
 .lms-login-kicker {
@@ -159,71 +155,104 @@
 	flex-direction: column;
 	justify-content: center;
 	padding: 2.5rem 1.25rem;
+	background: var(--lms-surface);
 }
 
 .lms-login-main > section {
 	width: 100%;
-	max-width: 26rem;
+	max-width: 25rem;
 	margin: 0 auto;
 }
 
 .lms-login .page-card-head {
 	padding: 0;
-	margin-bottom: 1.5rem;
+	margin-bottom: 2rem;
 	text-align: start;
+}
+
+.lms-login .page-card-head img {
+	max-height: none;
+}
+
+.lms-login-form-logo.app-logo {
+	display: block;
+	height: 3rem;
+	width: auto;
+	max-height: none;
+	margin: 0 0 1.75rem -0.5rem;
+}
+
+/* The blue mark needs a light backing on the dark panel, the way the brand
+   panel used to give it one. */
+[data-theme='dark'] .lms-login-form-logo.app-logo {
+	box-sizing: content-box;
+	margin-inline-start: 0;
+	padding: 0.3rem 0.45rem;
+	border-radius: 0.75rem;
+	background: #ffffff;
 }
 
 .lms-login .page-card-head h4 {
 	margin: 0;
 	font-size: 1.75rem;
-	font-weight: 600;
-	letter-spacing: -0.01em;
+	font-weight: 700;
+	line-height: 1.2;
+	letter-spacing: -0.02em;
 	color: var(--lms-ink);
 }
 
 .lms-login-subtitle {
 	margin: 0.5rem 0 0;
-	font-size: 0.95rem;
+	font-size: 0.9375rem;
+	line-height: 1.5;
 	color: var(--lms-ink-muted);
 }
 
-.lms-login-mobile-logo.app-logo {
-	display: block;
-	height: 2.5rem;
-	width: auto;
-	margin: 0 0 1.5rem;
-}
-
-@media (min-width: 992px) {
-	.lms-login-mobile-logo.app-logo {
-		display: none;
-	}
-}
-
+/* The card is unboxed: the form floats on the panel, as in the RMU screens. */
 .lms-login .login-content.page-card {
 	max-width: none;
 	margin: 0;
-	padding: 1.75rem;
-	border: 1px solid var(--lms-outline);
-	border-radius: 1rem;
-	background: var(--lms-surface);
-	box-shadow: 0 1px 2px rgb(10 37 64 / 0.06), 0 8px 24px -12px rgb(10 37 64 / 0.18);
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.lms-login .page-card form {
+	max-width: none;
+	margin: 0;
 }
 
 .lms-login .page-card-body {
 	padding: 0;
 }
 
-.lms-login .form-group {
-	margin-bottom: 1.1rem;
+.lms-login .page-card form .form-group {
+	margin-bottom: 1.25rem;
 }
 
-.lms-login .form-label {
+/* ---- Labels ------------------------------------------------------------ */
+
+/* Matches frappe's four-class depth so the uppercase treatment wins. The
+   signup template marks its labels .sr-only (frappe's default page shares the
+   file); inside this layout they are revealed. */
+.lms-login .page-card .page-card-body .form-label,
+.lms-login .page-card .page-card-body .form-label.sr-only {
+	position: static;
 	display: block;
-	margin-bottom: 0.4rem;
-	font-size: 0.85rem;
-	font-weight: 500;
-	color: var(--lms-ink);
+	width: auto;
+	height: auto;
+	margin: 0 0 0.5rem;
+	padding: 0;
+	overflow: visible;
+	clip: auto;
+	white-space: normal;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--lms-label);
 }
 
 .lms-login-label-row {
@@ -233,64 +262,139 @@
 	gap: 1rem;
 }
 
-.lms-login .forgot-password-message {
+.lms-login .page-card .page-card-body .forgot-password-message {
 	margin: 0;
-	font-size: 0.85rem;
+	font-size: 0.8125rem;
+	line-height: 1;
 }
 
-.lms-login .form-control {
-	height: 2.75rem;
-	border: 1px solid var(--lms-outline);
+.lms-login .page-card .page-card-body .forgot-password-message > * {
+	color: var(--lms-primary-ink);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	letter-spacing: 0;
+}
+
+/* ---- Fields ------------------------------------------------------------ */
+
+.lms-login .page-card .page-card-body input.form-control,
+.lms-login .page-card .page-card-body select.form-control {
+	width: 100%;
+	height: 3rem;
+	margin-bottom: 0;
+	padding: 0 1rem;
+	border: 1px solid var(--lms-field-border);
 	border-radius: 0.625rem;
-	background: var(--lms-surface);
+	background-color: var(--lms-field-bg);
 	color: var(--lms-ink);
-	font-size: 0.95rem;
+	font-size: 0.9375rem;
+	letter-spacing: 0;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
-.lms-login .form-control:focus {
+.lms-login .page-card .page-card-body input.form-control::placeholder {
+	color: var(--lms-ink-muted);
+	opacity: 0.75;
+}
+
+.lms-login .page-card .page-card-body input.form-control:focus,
+.lms-login .page-card .page-card-body select.form-control:focus {
 	border-color: var(--lms-primary);
+	background-color: var(--lms-surface);
 	box-shadow: 0 0 0 3px var(--lms-primary-soft);
+	outline: none;
 }
 
-.lms-login .page-card-actions {
-	padding: 0;
-	margin-top: 1.5rem;
+.lms-login .page-card .page-card-body .email-field input.form-control,
+.lms-login .page-card .page-card-body .password-field input.form-control {
+	padding-left: 1rem;
+	padding-right: 2.75rem;
 }
 
-.lms-login .btn-primary {
-	height: 2.75rem;
-	border: none;
-	border-radius: 0.625rem;
-	background: var(--lms-primary-ink);
-	color: #ffffff;
-	font-size: 0.95rem;
+.lms-login .control-input-wrapper,
+.lms-login .control-input {
+	width: 100%;
+}
+
+.lms-login .control-input > select.form-control {
+	flex: 1 1 auto;
+}
+
+/* The decorative field icons sit on the right, where the RMU inputs put them.
+   The password keeps only the show/hide toggle, so its lock is hidden. */
+.lms-login .page-card .page-card-body .field-icon {
+	top: 50%;
+	left: auto;
+	right: 1rem;
+	transform: translateY(-50%);
+	width: 1.125rem;
+	height: 1.125rem;
+	color: var(--lms-ink-muted);
+	pointer-events: none;
+}
+
+.lms-login .page-card .page-card-body .password-field .field-icon {
+	display: none;
+}
+
+.lms-login .page-card .page-card-body .password-field .toggle-password {
+	top: 50%;
+	right: 1rem;
+	transform: translateY(-50%);
+	color: var(--lms-primary-ink);
+	font-size: 0.8125rem;
 	font-weight: 600;
 }
 
-.lms-login .btn-primary:hover,
-.lms-login .btn-primary:focus {
+/* ---- Actions ----------------------------------------------------------- */
+
+.lms-login .page-card .page-card-actions {
+	padding: 0;
+	margin-top: 1.75rem;
+}
+
+.lms-login .page-card-actions .btn-primary {
+	display: block;
+	width: 100%;
+	height: 3.25rem;
+	border: none;
+	border-radius: 9999px;
+	background: var(--lms-primary-ink);
+	color: #ffffff;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	transition: background-color 0.15s ease;
+}
+
+.lms-login .page-card-actions .btn-primary:hover,
+.lms-login .page-card-actions .btn-primary:focus {
 	background: var(--lms-primary-ink-hover);
 	color: #ffffff;
 }
 
-[data-theme='dark'] .lms-login .btn-primary,
-[data-theme='dark'] .lms-login .btn-primary:hover {
+[data-theme='dark'] .lms-login .page-card-actions .btn-primary,
+[data-theme='dark'] .lms-login .page-card-actions .btn-primary:hover {
 	color: #04121f;
 }
 
 .lms-login .btn-default,
-.lms-login .btn-login-option {
+.lms-login .page-card .page-card-body .btn-login-option,
+.lms-login .page-card .page-card-actions .btn-login-option {
 	min-height: 2.75rem;
-	border: 1px solid var(--lms-outline);
+	border: 1px solid var(--lms-field-border);
 	border-radius: 0.625rem;
-	background: var(--lms-surface);
+	background: var(--lms-field-bg);
 	color: var(--lms-ink);
 	font-weight: 500;
 }
 
+/* ---- Links and messages ------------------------------------------------ */
+
 .lms-login a:not(.btn) {
 	color: var(--lms-primary-ink);
-	font-weight: 500;
+	font-weight: 600;
+	text-decoration: none;
 }
 
 .lms-login a:not(.btn):hover {
@@ -298,14 +402,33 @@
 	text-decoration: underline;
 }
 
+.lms-login .for-login .sign-up-message a,
+.lms-login .for-signup .sign-up-message a,
+.lms-login .for-forgot .sign-up-message a,
+.lms-login .for-login-with-email-link .sign-up-message a {
+	color: var(--lms-ink);
+	font-weight: 600;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.lms-login .for-login .sign-up-message a:hover,
+.lms-login .for-signup .sign-up-message a:hover,
+.lms-login .for-forgot .sign-up-message a:hover,
+.lms-login .for-login-with-email-link .sign-up-message a:hover {
+	color: var(--lms-primary-ink);
+}
+
 .lms-login .sign-up-message {
-	margin-top: 1.25rem;
-	font-size: 0.9rem;
+	margin-top: 1.75rem;
+	margin-bottom: 0;
+	text-align: center;
+	font-size: 0.875rem;
 	color: var(--lms-ink-muted);
 }
 
-.lms-login .login-divider {
-	margin: 1.25rem 0;
+.lms-login .page-card .page-card-body .login-divider {
+	margin: 1.5rem 0;
 	color: var(--lms-ink-muted);
 }
 

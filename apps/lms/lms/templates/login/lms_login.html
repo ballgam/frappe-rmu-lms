@@ -65,9 +65,8 @@
 
 {% macro logo_section(title=null, subtitle=null) %}
 <div class="page-card-head">
-	{#- The brand panel carries the logo on wide screens; this one shows only
-	    where that panel is hidden. -#}
-	<img class="app-logo lms-login-mobile-logo" src="{{ lms_logo }}" alt="">
+	{#- The logo lives in the form, above the heading, on every screen size. -#}
+	<img class="app-logo lms-login-form-logo" src="{{ lms_logo }}" alt="">
 	{% if title %}
 	<h4>{{ _(title) }}</h4>
 	{% else %}
@@ -81,7 +80,7 @@
 
 {% block head_include %}
 {{ include_style('login.bundle.css') }}
-<link rel="stylesheet" href="/assets/lms/css/lms_login.css?v=1">
+<link rel="stylesheet" href="/assets/lms/css/lms_login.css?v=2">
 {% endblock %}
 
 {% block page_content %}
@@ -90,9 +89,6 @@
 	<aside class="lms-login-brand" aria-hidden="true">
 		<div class="lms-login-brand-grid"></div>
 		<div class="lms-login-brand-inner">
-			<div class="lms-login-brand-logo">
-				<img src="{{ lms_logo }}" alt="">
-			</div>
 			<div class="lms-login-brand-copy">
 				<p class="lms-login-kicker">{{ app_name }}</p>
 				<p class="lms-login-headline">
@@ -220,6 +216,10 @@
 						<div class="email-field">
 							<input type="email" id="forgot_email" class="form-control"
 								placeholder="{{ _('Email Address') }}" required autofocus autocomplete="username">
+							<svg class="field-icon email-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"
+								xmlns="http://www.w3.org/2000/svg">
+								<use class="es-lock" href="#es-line-email"></use>
+							</svg>
 						</div>
 					</div>
 					<div class="page-card-actions">
@@ -243,6 +243,10 @@
 						<div class="email-field">
 							<input type="email" id="login_with_email_link_email" class="form-control"
 								placeholder="{{ _('Email Address') }}" required autofocus autocomplete="username">
+							<svg class="field-icon email-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"
+								xmlns="http://www.w3.org/2000/svg">
+								<use class="es-lock" href="#es-line-email"></use>
+							</svg>
 						</div>
 					</div>
 					<div class="page-card-actions">
